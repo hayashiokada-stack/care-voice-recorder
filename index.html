@@ -58,10 +58,18 @@
   .search-box { display: flex; align-items: center; gap: 6px; background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 6px 8px; }
   .search-box input { border: none; background: transparent; font-size: 13px; color: var(--color-text-primary); outline: none; width: 100%; }
 
+  .selection-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 0.5px solid var(--color-border-tertiary); font-size: 11px; color: var(--color-text-secondary); background: var(--color-background-primary); }
+  .selection-bar .count { font-weight: 500; color: var(--primary); margin-right: auto; }
+  .link-btn { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 2px 4px; }
+  .link-btn:hover { text-decoration: underline; }
+
   .patient-list { flex: 1; overflow-y: auto; padding: 6px; }
-  .patient-item { padding: 8px 10px; border-radius: var(--border-radius-md); cursor: pointer; margin-bottom: 2px; transition: background 0.15s; }
+  .patient-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: var(--border-radius-md); cursor: pointer; margin-bottom: 2px; transition: background 0.15s; border: 0.5px solid transparent; }
   .patient-item:hover { background: var(--color-background-primary); }
-  .patient-item.active { background: var(--color-background-primary); border: 0.5px solid #9FE1CB; }
+  .patient-item.active { background: var(--color-background-primary); border-color: #9FE1CB; }
+  .patient-checkbox { flex-shrink: 0; width: 16px; height: 16px; margin-top: 2px; accent-color: var(--primary); cursor: pointer; }
+  .patient-item-info { flex: 1; min-width: 0; }
+  .bulk-notice { display: flex; align-items: center; gap: 6px; background: var(--accent-light); border: 0.5px solid #B5D4F4; color: #185FA5; font-size: 12px; border-radius: var(--border-radius-md); padding: 8px 10px; margin-bottom: 10px; }
   .patient-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
   .patient-info { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
   .care-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-top: 3px; font-weight: 500; }
@@ -201,19 +209,10 @@
     .sidebar {
       border-right: none;
       border-bottom: 0.5px solid var(--color-border-tertiary);
+      max-height: 42vh;
     }
     .patient-list {
-      display: flex;
-      flex-direction: row;
-      overflow-x: auto;
       -webkit-overflow-scrolling: touch;
-      gap: 8px;
-      padding: 8px 10px;
-    }
-    .patient-item {
-      flex: 0 0 auto;
-      width: 132px;
-      margin-bottom: 0;
     }
     .topbar {
       padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
@@ -251,6 +250,11 @@
         <i class="ti ti-search" style="font-size:14px;color:var(--color-text-secondary)" aria-hidden="true"></i>
         <input type="text" placeholder="이름 또는 ID 검색" id="searchInput" oninput="filterPatients(this.value)">
       </div>
+    </div>
+    <div class="selection-bar" id="selectionBar">
+      <span class="count" id="selectionCount">0명 선택됨</span>
+      <button class="link-btn" onclick="selectAllPatients()">전체 선택</button>
+      <button class="link-btn" onclick="clearPatientSelection()">선택 해제</button>
     </div>
     <div class="patient-list" id="patientList"></div>
   </div>
@@ -290,6 +294,7 @@
               <button class="type-btn" onclick="selectType(this,'영양·식사')">영양·식사</button>
               <button class="type-btn" onclick="selectType(this,'특이사항')">특이사항</button>
             </div>
+            <div class="bulk-notice" id="bulkNotice" style="display:none"></div>
             <div class="recorder-main">
               <button class="record-btn idle" id="recordBtn" onclick="toggleRecord()" aria-label="녹음 시작">
                 <i class="ti ti-microphone" id="recordIcon"></i>
@@ -389,7 +394,9 @@ const patients = [
 const gradeClass = {'1등급':'grade1','2등급':'grade2','3등급':'grade3','4등급':'grade4','5등급':'grade5'};
 const typeStyle = {'신체활동지원':'rt-care','인지활동지원':'rt-activity','간호처치':'rt-medical','영양·식사':'rt-nutrition','특이사항':'rt-care'};
 
-let selectedPatient = null;
+let selectedPatient = null; // 상단바/기록이력/수급자정보 탭에 표시되는 대표(최근 선택) 이용자
+let selectedPatientIds = new Set(); // 일괄 기록 저장 대상 (복수 선택)
+let currentSearchQuery = '';
 let isRecording = false;
 let recordingTimer = null;
 let seconds = 0;
@@ -431,28 +438,97 @@ function init() {
 function renderPatients(list) {
   const el = document.getElementById('patientList');
   el.innerHTML = list.map(p => `
-    <div class="patient-item" onclick="selectPatient('${p.id}')" id="pi-${p.id}">
-      <div class="patient-name">${p.name}</div>
-      <div class="patient-info">${p.age}세 · ${p.gender} · ${p.id}</div>
-      <span class="care-badge ${gradeClass[p.grade]}">${p.grade}</span>
+    <div class="patient-item ${selectedPatient && selectedPatient.id===p.id ? 'active' : ''}" onclick="togglePatientSelection('${p.id}')" id="pi-${p.id}">
+      <input type="checkbox" class="patient-checkbox" ${selectedPatientIds.has(p.id)?'checked':''} onclick="event.stopPropagation(); togglePatientSelection('${p.id}')" aria-label="${p.name} 선택">
+      <div class="patient-item-info">
+        <div class="patient-name">${p.name}</div>
+        <div class="patient-info">${p.age}세 · ${p.gender} · ${p.id}</div>
+        <span class="care-badge ${gradeClass[p.grade]}">${p.grade}</span>
+      </div>
     </div>
   `).join('');
+  updateSelectionBar();
+}
+
+function getVisiblePatients() {
+  const q = currentSearchQuery;
+  return q ? patients.filter(p => p.name.includes(q) || p.id.includes(q)) : patients;
 }
 
 function filterPatients(q) {
-  renderPatients(patients.filter(p => p.name.includes(q) || p.id.includes(q)));
+  currentSearchQuery = q;
+  renderPatients(getVisiblePatients());
 }
 
-function selectPatient(id) {
-  selectedPatient = patients.find(p=>p.id===id);
-  document.querySelectorAll('.patient-item').forEach(el=>el.classList.remove('active'));
-  const el = document.getElementById('pi-'+id);
-  if(el) el.classList.add('active');
-  document.getElementById('selectedName').textContent = selectedPatient.name;
-  document.getElementById('selectedInfo').textContent = `${selectedPatient.id} · ${selectedPatient.grade} · 담당: ${selectedPatient.careWorker}`;
-  document.getElementById('footerInfo').textContent = `선택됨: ${selectedPatient.name}`;
+function togglePatientSelection(id) {
+  if (selectedPatientIds.has(id)) {
+    selectedPatientIds.delete(id);
+    if (selectedPatient && selectedPatient.id === id) {
+      const remaining = Array.from(selectedPatientIds);
+      selectedPatient = remaining.length ? patients.find(p=>p.id===remaining[remaining.length-1]) : null;
+    }
+  } else {
+    selectedPatientIds.add(id);
+    selectedPatient = patients.find(p=>p.id===id);
+  }
+  onSelectionChanged();
+}
+
+function selectAllPatients() {
+  const visible = getVisiblePatients();
+  visible.forEach(p => selectedPatientIds.add(p.id));
+  if (visible.length) selectedPatient = visible[visible.length-1];
+  onSelectionChanged();
+}
+
+function clearPatientSelection() {
+  selectedPatientIds.clear();
+  selectedPatient = null;
+  onSelectionChanged();
+}
+
+function onSelectionChanged() {
+  renderPatients(getVisiblePatients());
+  updateTopbar();
+  updateBulkNotice();
   renderHistory();
   renderPatientDetail();
+}
+
+function updateSelectionBar() {
+  const count = selectedPatientIds.size;
+  document.getElementById('selectionCount').textContent = `${count}명 선택됨`;
+}
+
+function updateTopbar() {
+  const count = selectedPatientIds.size;
+  if (count === 0) {
+    document.getElementById('selectedName').textContent = '수급자를 선택하세요';
+    document.getElementById('selectedInfo').textContent = '좌측 목록에서 수급자를 선택해 주세요';
+    document.getElementById('footerInfo').textContent = '준비됨';
+  } else if (count === 1) {
+    const p = selectedPatient;
+    document.getElementById('selectedName').textContent = p.name;
+    document.getElementById('selectedInfo').textContent = `${p.id} · ${p.grade} · 담당: ${p.careWorker}`;
+    document.getElementById('footerInfo').textContent = `선택됨: ${p.name}`;
+  } else {
+    const names = Array.from(selectedPatientIds).map(id => patients.find(p=>p.id===id)?.name).filter(Boolean);
+    document.getElementById('selectedName').textContent = `${count}명 선택됨`;
+    document.getElementById('selectedInfo').textContent = names.join(', ');
+    document.getElementById('footerInfo').textContent = `일괄 대상 ${count}명`;
+  }
+}
+
+function updateBulkNotice() {
+  const el = document.getElementById('bulkNotice');
+  const count = selectedPatientIds.size;
+  if (count > 1) {
+    const names = Array.from(selectedPatientIds).map(id => patients.find(p=>p.id===id)?.name).filter(Boolean).join(', ');
+    el.style.display = 'flex';
+    el.innerHTML = `<i class="ti ti-users" aria-hidden="true"></i> 선택된 ${count}명 전체에게 동일한 내용이 저장됩니다: ${names}`;
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 function renderWaveBars() {
@@ -718,7 +794,8 @@ function renderOutputs() {
 function previewKakao() { kakaoPreviewShown = true; renderOutputs(); }
 
 function sendKakao() {
-  showToast('✅ 보호자에게 카카오톡 안내가 전송되었습니다');
+  const count = selectedPatientIds.size;
+  showToast(count > 1 ? `✅ 선택된 ${count}명 보호자에게 카카오톡 안내가 개별 전송되었습니다` : '✅ 보호자에게 카카오톡 안내가 전송되었습니다');
   kakaoPreviewShown = false;
   renderOutputs();
 }
@@ -743,34 +820,41 @@ function clearRecord() {
 function saveRecord() {
   const text = document.getElementById('transcriptionArea').value.trim();
   if(!text){ showToast('⚠️ 기록 내용을 입력해 주세요'); return; }
-  if(!selectedPatient){ showToast('⚠️ 수급자를 선택해 주세요'); return; }
+  if(selectedPatientIds.size===0){ showToast('⚠️ 이용자를 선택해 주세요'); return; }
 
+  const targets = patients.filter(p => selectedPatientIds.has(p.id));
   const now = new Date();
-  const record = {
-    id: 'R'+Date.now(),
-    patientId: selectedPatient.id,
-    patientName: selectedPatient.name,
-    type: selectedType,
-    text,
-    time: now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),
-    date: now.toLocaleDateString('ko-KR'),
-    duration: seconds,
-    syncStatus: 'pending',
-    careWorker: selectedPatient.careWorker,
-    outputs: currentOutputs,
-    isIncident: !!(currentOutputs && currentOutputs.isIncident),
-    requiresManualReview: !!(currentOutputs && currentOutputs.requiresManualReview),
-  };
+  const createdIds = [];
 
-  records.unshift(record);
+  targets.forEach(p => {
+    const outputs = generateOutputs(selectedType, text, p);
+    const record = {
+      id: 'R'+Date.now()+'-'+p.id,
+      patientId: p.id,
+      patientName: p.name,
+      type: selectedType,
+      text,
+      time: now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),
+      date: now.toLocaleDateString('ko-KR'),
+      duration: seconds,
+      syncStatus: 'pending',
+      careWorker: p.careWorker,
+      outputs,
+      isIncident: !!(outputs && outputs.isIncident),
+      requiresManualReview: !!(outputs && outputs.requiresManualReview),
+    };
+    records.unshift(record);
+    createdIds.push(record.id);
+  });
+
   try { localStorage.setItem('careRecords', JSON.stringify(records.slice(0,200))); } catch(e){}
-  pendingRecords++;
+  pendingRecords += targets.length;
   updateStats();
   renderHistory();
   clearRecord();
-  showToast('✅ 기록이 저장되었습니다');
+  showToast(targets.length > 1 ? `✅ ${targets.length}명에게 기록이 일괄 저장되었습니다` : '✅ 기록이 저장되었습니다');
 
-  setTimeout(()=>autoSync(record.id), 2000);
+  createdIds.forEach(id => setTimeout(()=>autoSync(id), 2000));
 }
 
 function autoSync(recordId) {
