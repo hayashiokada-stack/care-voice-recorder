@@ -1,0 +1,42 @@
+flowchart TD
+    A["음성 녹음 시작<br/>(수급자 선택 후)"] --> B["STT 텍스트 변환"]
+    B --> C{"기록 유형 선택"}
+
+    C -->|신체활동지원| D1["해당 유형 프롬프트 적용"]
+    C -->|인지활동지원| D2["해당 유형 프롬프트 적용"]
+    C -->|간호처치| D3["해당 유형 프롬프트 적용"]
+    C -->|영양·식사| D4["해당 유형 프롬프트 적용"]
+    C -->|특이사항| E["1차 분류 프롬프트 실행<br/>(사고 키워드 감지)"]
+
+    D1 --> F["3종 동시 생성<br/>급여기록지 / 인수인계 / 보호자안내"]
+    D2 --> F
+    D3 --> F
+    D4 --> F
+
+    E --> G{"사고 관련 키워드<br/>감지되었는가?"}
+
+    G -->|No: 일반 특이사항| F
+    G -->|Yes: 사고 의심| H["⚠ 사고 분기 진입"]
+
+    H --> H1["4종 생성<br/>급여기록지 / 인수인계 /<br/>보호자안내(전송보류) / 사고보고서"]
+    H1 --> H2["화면에 경고 배너 표시<br/>'사고로 분류되었습니다'"]
+    H2 --> H3["카카오톡 자동 전송 버튼<br/>비활성화 처리"]
+    H3 --> H4["담당자(관리자/센터장)<br/>즉시 알림"]
+
+    F --> I["사람이 결과 검수/수정"]
+    H4 --> I
+
+    I --> J{"수급자·가족에게<br/>어떻게 알릴 것인가?"}
+
+    J -->|일반 건| K["보호자 카카오톡 전송<br/>(담당자 확인 후 버튼 클릭)"]
+    J -->|사고 건| L["담당자 유선 연락 먼저<br/>→ 이후 필요시 수동 전송"]
+
+    K --> M["저장 및 서버 동기화"]
+    L --> M
+
+    style H fill:#ffe0e0,stroke:#cc0000,stroke-width:2px
+    style H1 fill:#ffe0e0,stroke:#cc0000,stroke-width:2px
+    style H2 fill:#ffe0e0,stroke:#cc0000,stroke-width:2px
+    style H3 fill:#ffe0e0,stroke:#cc0000,stroke-width:2px
+    style H4 fill:#ffe0e0,stroke:#cc0000,stroke-width:2px
+    style L fill:#ffe0e0,stroke:#cc0000,stroke-width:2px

@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>장기요양 음성 기록 시스템</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" onerror="this.dataset.failed='1'">
+<script>
+(function () {
+  function showFatal(msg) {
+    var render = function () {
+      if (document.getElementById('fatalErrorBanner')) return;
+      var el = document.createElement('div');
+      el.id = 'fatalErrorBanner';
+      el.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;background:#A32D2D;color:#fff;padding:10px 14px;font-size:13px;text-align:center;font-family:system-ui;';
+      el.textContent = '일시적인 오류가 발생했습니다. 새로고침해 주세요.';
+      document.body.appendChild(el);
+    };
+    if (document.body) render();
+    else document.addEventListener('DOMContentLoaded', render);
+  }
+  window.addEventListener('error', function (e) { showFatal(e.message); });
+  window.addEventListener('unhandledrejection', function (e) { showFatal(e.reason); });
+})();
+</script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --color-background-primary: #ffffff;
+    --color-background-secondary: #F7F8F9;
+    --color-border-tertiary: #E7E7EA;
+    --color-border-secondary: #D8D9DC;
+    --color-text-primary: #1A1A1E;
+    --color-text-secondary: #6B6F76;
+    --border-radius-lg: 14px;
+    --border-radius-md: 8px;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --primary: #0F6E56;
+    --primary-light: #E1F5EE;
+    --primary-mid: #1D9E75;
+    --accent: #185FA5;
+    --accent-light: #E6F1FB;
+    --warn: #BA7517;
+    --warn-light: #FAEEDA;
+    --danger: #A32D2D;
+    --danger-light: #FCEBEB;
+    --success: #3B6D11;
+    --success-light: #EAF3DE;
+  }
+  body { font-family: var(--font-sans, system-ui); background: transparent; }
+
+  .app { display: grid; grid-template-columns: 220px 1fr; height: 600px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-primary); }
+
+  .sidebar { background: var(--color-background-secondary); border-right: 0.5px solid var(--color-border-tertiary); display: flex; flex-direction: column; overflow: hidden; }
+  .sidebar-header { padding: 12px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .sidebar-header h3 { font-size: 12px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .search-box { display: flex; align-items: center; gap: 6px; background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 6px 8px; }
+  .search-box input { border: none; background: transparent; font-size: 13px; color: var(--color-text-primary); outline: none; width: 100%; }
+
+  .patient-list { flex: 1; overflow-y: auto; padding: 6px; }
+  .patient-item { padding: 8px 10px; border-radius: var(--border-radius-md); cursor: pointer; margin-bottom: 2px; transition: background 0.15s; }
+  .patient-item:hover { background: var(--color-background-primary); }
+  .patient-item.active { background: var(--color-background-primary); border: 0.5px solid #9FE1CB; }
+  .patient-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+  .patient-info { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+  .care-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-top: 3px; font-weight: 500; }
+  .grade1 { background: #FCEBEB; color: #A32D2D; }
+  .grade2 { background: #FAEEDA; color: #BA7517; }
+  .grade3 { background: #EAF3DE; color: #3B6D11; }
+  .grade4 { background: #E6F1FB; color: #185FA5; }
+  .grade5 { background: #EEEDFE; color: #534AB7; }
+
+  .main { display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { padding: 10px 16px; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; justify-content: space-between; }
+  .topbar-left { display: flex; align-items: center; gap: 10px; }
+  .topbar-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); }
+  .topbar-sub { font-size: 12px; color: var(--color-text-secondary); }
+  .sync-btn { display: flex; align-items: center; gap: 5px; font-size: 12px; padding: 5px 10px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); cursor: pointer; color: var(--color-text-secondary); transition: all 0.15s; }
+  .sync-btn:hover { background: var(--color-background-primary); color: var(--color-text-primary); }
+  .sync-btn.syncing i { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .tabs { display: flex; border-bottom: 0.5px solid var(--color-border-tertiary); padding: 0 16px; }
+  .tab { font-size: 13px; padding: 8px 12px; cursor: pointer; color: var(--color-text-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.15s; }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
+
+  .content { flex: 1; overflow-y: auto; padding: 14px 16px; }
+
+  .record-section { margin-bottom: 16px; }
+  .section-label { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+
+  .recorder-card { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 14px; }
+  .recorder-type-selector { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .type-btn { font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); cursor: pointer; color: var(--color-text-secondary); transition: all 0.15s; }
+  .type-btn.active { background: var(--primary-light); border-color: #5DCAA5; color: var(--primary); font-weight: 500; }
+
+  .recorder-main { display: flex; align-items: center; gap: 12px; }
+  .record-btn { width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 22px; transition: all 0.2s; flex-shrink: 0; }
+  .record-btn.idle { background: var(--primary-light); color: var(--primary); }
+  .record-btn.idle:hover { background: #9FE1CB; }
+  .record-btn.recording { background: #FCEBEB; color: var(--danger); animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+  .record-btn.processing { background: var(--warn-light); color: var(--warn); }
+
+  .recorder-status { flex: 1; }
+  .status-text { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+  .waveform { height: 32px; display: flex; align-items: center; gap: 2px; }
+  .wave-bar { width: 3px; border-radius: 2px; background: var(--color-border-secondary); transition: height 0.1s; }
+  .wave-bar.active { background: var(--primary-mid); }
+  .timer { font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+  .transcription-box { margin-top: 10px; }
+  .transcription-box textarea { width: 100%; min-height: 70px; resize: vertical; font-size: 13px; line-height: 1.6; padding: 8px 10px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); font-family: inherit; outline: none; }
+  .transcription-box textarea:focus { border-color: #5DCAA5; }
+
+  .ai-suggestion { background: var(--accent-light); border: 0.5px solid #B5D4F4; border-radius: var(--border-radius-md); padding: 8px 10px; margin-top: 8px; font-size: 12px; color: #185FA5; display: flex; align-items: flex-start; gap: 6px; }
+
+  .result-section { margin-top: 12px; }
+  .incident-banner, .review-banner { display: flex; align-items: center; gap: 8px; border-radius: var(--border-radius-md); padding: 8px 12px; font-size: 12.5px; font-weight: 500; margin-bottom: 10px; }
+  .incident-banner { background: var(--danger-light); border: 0.5px solid var(--danger); color: var(--danger); }
+  .review-banner { background: var(--warn-light); border: 0.5px solid var(--warn); color: var(--warn); }
+  .output-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 10px 12px; margin-top: 8px; }
+  .output-card.incident { border-color: var(--danger); background: var(--danger-light); }
+  .output-card-header { font-size: 12px; font-weight: 600; color: var(--color-text-primary); display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .output-card-body { font-size: 12.5px; color: var(--color-text-primary); line-height: 1.6; white-space: pre-line; }
+  .kakao-preview { background: #FFF9E8; border: 1px dashed var(--warn); border-radius: var(--border-radius-md); padding: 8px 10px; font-size: 12.5px; margin-top: 4px; white-space: pre-line; }
+  .kakao-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+  .action-row { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+  .btn { font-size: 13px; padding: 6px 14px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); cursor: pointer; font-family: inherit; transition: all 0.15s; }
+  .btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
+  .btn-primary:hover { background: var(--primary-mid); }
+  .btn-secondary { background: var(--color-background-secondary); color: var(--color-text-primary); }
+  .btn-secondary:hover { background: var(--color-background-primary); }
+
+  .records-list { display: flex; flex-direction: column; gap: 8px; }
+  .record-entry { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 10px 12px; cursor: pointer; transition: border-color 0.15s; }
+  .record-entry:hover { border-color: var(--color-border-secondary); }
+  .record-entry-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+  .record-entry-type { font-size: 11px; font-weight: 500; padding: 2px 7px; border-radius: 10px; }
+  .rt-care { background: var(--primary-light); color: var(--primary); }
+  .rt-medical { background: #FCEBEB; color: var(--danger); }
+  .rt-activity { background: var(--accent-light); color: var(--accent); }
+  .rt-nutrition { background: var(--warn-light); color: var(--warn); }
+  .record-entry-time { font-size: 11px; color: var(--color-text-secondary); }
+  .record-entry-text { font-size: 13px; color: var(--color-text-primary); line-height: 1.5; }
+  .record-entry-footer { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .record-status { font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  .record-status.synced { color: var(--success); }
+  .record-status.pending { color: var(--warn); }
+
+  .patient-card { background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 12px 14px; margin-bottom: 14px; }
+  .patient-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--primary-light); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--primary); flex-shrink: 0; }
+  .patient-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 12px; }
+  .meta-item { display: flex; gap: 4px; }
+  .meta-label { color: var(--color-text-secondary); }
+  .meta-value { color: var(--color-text-primary); font-weight: 500; }
+
+  .sync-status-bar { padding: 6px 16px; border-top: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; justify-content: space-between; background: var(--color-background-secondary); }
+  .sync-indicator { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--color-text-secondary); }
+  .sync-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .sync-dot.online { background: #639922; }
+  .sync-dot.offline { background: #E24B4A; }
+  .sync-dot.syncing { background: #BA7517; animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.3} }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--color-text-secondary); font-size: 13px; }
+  .toast { position: absolute; bottom: 40px; right: 16px; background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 8px 14px; font-size: 12px; color: var(--color-text-primary); box-shadow: 0 2px 8px rgba(0,0,0,0.08); opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 10; display: flex; align-items: center; gap: 6px; }
+  .toast.show { opacity: 1; }
+
+  .db-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .db-card { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 10px 12px; }
+  .db-card-title { font-size: 12px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+  .db-stat { font-size: 22px; font-weight: 500; color: var(--color-text-primary); }
+  .db-sub { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+
+  .server-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .server-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); background: var(--color-background-primary); }
+  .server-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+  .server-url { font-size: 11px; color: var(--color-text-secondary); font-family: var(--font-mono); }
+  .server-status { font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  .toggle { width: 32px; height: 18px; border-radius: 9px; border: none; cursor: pointer; transition: background 0.2s; position: relative; }
+  .toggle.on { background: var(--primary); }
+  .toggle.off { background: var(--color-border-secondary); }
+  .toggle::after { content: ''; position: absolute; top: 2px; width: 14px; height: 14px; background: white; border-radius: 50%; transition: left 0.2s; }
+  .toggle.on::after { left: 16px; }
+  .toggle.off::after { left: 2px; }
+</style>
+</head>
+<body>
+<h2 class="sr-only">장기요양 음성 기록 시스템</h2>
+
+<div class="app" style="position:relative;">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h3><i class="ti ti-users" aria-hidden="true"></i> 수급자 목록</h3>
+      <div class="search-box">
+        <i class="ti ti-search" style="font-size:14px;color:var(--color-text-secondary)" aria-hidden="true"></i>
+        <input type="text" placeholder="이름 또는 ID 검색" id="searchInput" oninput="filterPatients(this.value)">
+      </div>
+    </div>
+    <div class="patient-list" id="patientList"></div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title" id="selectedName">수급자를 선택하세요</div>
+          <div class="topbar-sub" id="selectedInfo">좌측 목록에서 수급자를 선택해 주세요</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div class="sync-btn" id="syncBtn" onclick="triggerSync()">
+          <i class="ti ti-refresh" id="syncIcon" aria-hidden="true"></i>
+          <span id="syncText">동기화</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('record',this)">음성 기록</div>
+      <div class="tab" onclick="switchTab('history',this)">기록 이력</div>
+      <div class="tab" onclick="switchTab('patient',this)">수급자 정보</div>
+      <div class="tab" onclick="switchTab('settings',this)">서버 설정</div>
+    </div>
+
+    <div class="content" id="mainContent">
+      <div id="tab-record">
+        <div class="record-section">
+          <div class="section-label">기록 유형 선택</div>
+          <div class="recorder-card">
+            <div class="recorder-type-selector" id="typeSelector">
+              <button class="type-btn active" onclick="selectType(this,'신체활동지원')">신체활동지원</button>
+              <button class="type-btn" onclick="selectType(this,'인지활동지원')">인지활동지원</button>
+              <button class="type-btn" onclick="selectType(this,'간호처치')">간호처치</button>
+              <button class="type-btn" onclick="selectType(this,'영양·식사')">영양·식사</button>
+              <button class="type-btn" onclick="selectType(this,'특이사항')">특이사항</button>
+            </div>
+            <div class="recorder-main">
+              <button class="record-btn idle" id="recordBtn" onclick="toggleRecord()" aria-label="녹음 시작">
+                <i class="ti ti-microphone" id="recordIcon"></i>
+              </button>
+              <div class="recorder-status">
+                <div class="status-text" id="statusText">마이크 버튼을 눌러 녹음 시작</div>
+                <div class="waveform" id="waveform"></div>
+                <div class="timer" id="timer">00:00</div>
+              </div>
+            </div>
+            <div class="transcription-box">
+              <textarea id="transcriptionArea" placeholder="음성 녹음 후 자동으로 텍스트로 변환됩니다. 직접 입력도 가능합니다."></textarea>
+            </div>
+            <div class="action-row">
+              <button class="btn btn-secondary" onclick="clearRecord()">초기화</button>
+              <button class="btn btn-secondary" onclick="generateFromText()"><i class="ti ti-sparkles" aria-hidden="true"></i> AI 기록 생성</button>
+              <button class="btn btn-primary" onclick="saveRecord()"><i class="ti ti-device-floppy" aria-hidden="true"></i> 저장</button>
+            </div>
+            <div class="result-section" id="resultSection" style="display:none">
+              <div class="section-label">AI 생성 결과 (시뮬레이션)</div>
+              <div id="outputCards"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-history" style="display:none">
+        <div class="record-section">
+          <div class="section-label">오늘의 기록</div>
+          <div class="records-list" id="recordsList"></div>
+        </div>
+      </div>
+
+      <div id="tab-patient" style="display:none">
+        <div id="patientDetailContent"></div>
+      </div>
+
+      <div id="tab-settings" style="display:none">
+        <div class="record-section">
+          <div class="section-label">DB 현황</div>
+          <div class="db-grid">
+            <div class="db-card">
+              <div class="db-card-title"><i class="ti ti-users" aria-hidden="true"></i> 등록 수급자</div>
+              <div class="db-stat">12</div>
+              <div class="db-sub">활성 수급자 수</div>
+            </div>
+            <div class="db-card">
+              <div class="db-card-title"><i class="ti ti-file-text" aria-hidden="true"></i> 총 기록</div>
+              <div class="db-stat" id="totalRecords">0</div>
+              <div class="db-sub">누적 기록 건수</div>
+            </div>
+            <div class="db-card">
+              <div class="db-card-title"><i class="ti ti-cloud-upload" aria-hidden="true"></i> 미동기화</div>
+              <div class="db-stat" id="pendingCount">0</div>
+              <div class="db-sub">동기화 대기 건수</div>
+            </div>
+            <div class="db-card">
+              <div class="db-card-title"><i class="ti ti-clock" aria-hidden="true"></i> 마지막 동기화</div>
+              <div class="db-stat" style="font-size:14px" id="lastSyncTime">-</div>
+              <div class="db-sub">서버 동기화 시각</div>
+            </div>
+          </div>
+        </div>
+        <div class="record-section" style="margin-top:16px">
+          <div class="section-label">외부 서버 연동</div>
+          <div class="server-list" id="serverList"></div>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="triggerSync()"><i class="ti ti-refresh" aria-hidden="true"></i> 전체 동기화</button>
+            <button class="btn btn-secondary" onclick="exportData()"><i class="ti ti-download" aria-hidden="true"></i> CSV 내보내기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sync-status-bar">
+      <div class="sync-indicator">
+        <div class="sync-dot online" id="statusDot"></div>
+        <span id="statusLabel">서버 연결됨</span>
+      </div>
+      <div style="font-size:11px;color:var(--color-text-secondary)" id="footerInfo">준비됨</div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+const patients = [
+  { id:'P001', name:'김순자', age:82, gender:'여', grade:'1등급', address:'서울 노원구', guardian:'김민준 (아들)', phone:'010-1234-5678', conditions:['치매','고혈압','당뇨'], careWorker:'박간호', initials:'김순' },
+  { id:'P002', name:'이복남', age:76, gender:'남', grade:'2등급', address:'서울 도봉구', guardian:'이지현 (딸)', phone:'010-2345-6789', conditions:['파킨슨병','관절염'], careWorker:'최요양', initials:'이복' },
+  { id:'P003', name:'박영희', age:88, gender:'여', grade:'1등급', address:'서울 강북구', guardian:'박철수 (아들)', phone:'010-3456-7890', conditions:['뇌졸중','욕창'], careWorker:'박간호', initials:'박영' },
+  { id:'P004', name:'정한수', age:71, gender:'남', grade:'3등급', address:'서울 성북구', guardian:'정민아 (딸)', phone:'010-4567-8901', conditions:['심장질환'], careWorker:'김요양', initials:'정한' },
+  { id:'P005', name:'최말순', age:79, gender:'여', grade:'2등급', address:'서울 동대문구', guardian:'최준호 (아들)', phone:'010-5678-9012', conditions:['당뇨','백내장'], careWorker:'최요양', initials:'최말' },
+  { id:'P006', name:'윤기철', age:85, gender:'남', grade:'4등급', address:'서울 중랑구', guardian:'윤소희 (딸)', phone:'010-6789-0123', conditions:['경도인지장애'], careWorker:'김요양', initials:'윤기' },
+];
+
+const gradeClass = {'1등급':'grade1','2등급':'grade2','3등급':'grade3','4등급':'grade4','5등급':'grade5'};
+const typeStyle = {'신체활동지원':'rt-care','인지활동지원':'rt-activity','간호처치':'rt-medical','영양·식사':'rt-nutrition','특이사항':'rt-care'};
+
+let selectedPatient = null;
+let isRecording = false;
+let recordingTimer = null;
+let seconds = 0;
+let waveInterval = null;
+let selectedType = '신체활동지원';
+let records = [];
+try {
+  const parsedRecords = JSON.parse(localStorage.getItem('careRecords') || '[]');
+  records = Array.isArray(parsedRecords) ? parsedRecords : [];
+} catch (e) {
+  records = [];
+  try { localStorage.removeItem('careRecords'); } catch (e2) {}
+}
+let servers = [
+  { name:'장기요양 중앙 서버', url:'care.nhis.or.kr/api', enabled:true, status:'online' },
+  { name:'기관 내부 서버', url:'192.168.1.10:3000', enabled:true, status:'online' },
+  { name:'백업 서버', url:'backup.care.or.kr', enabled:false, status:'offline' },
+];
+let pendingRecords = records.filter(r=>r.syncStatus==='pending').length;
+let lastSync = localStorage.getItem('lastSync') || null;
+
+const sampleTexts = {
+  '신체활동지원': ['오전 9시 기상 도움, 세안 및 구강청결 지원. 보행 보조기 사용하여 거실 이동 도움. 낙상 위험 없었음.','목욕 지원 실시. 허리 부분 피부 상태 확인, 발적 없음. 체위변경 2회 실시.'],
+  '인지활동지원': ['오늘의 날짜, 날씨 확인 활동. 사진 보며 가족 이름 맞추기 진행. 집중력 유지 15분. 기분 양호.','음악 듣기 활동. 좋아하는 트로트 음악에 반응 좋음. 손뼉 치며 따라 부름.'],
+  '간호처치': ['혈압 측정: 138/86mmHg, 맥박 72회. 혈당 측정: 식전 126mg/dL. 혈압약 오전 1정 복용 확인.','욕창 예방 처치 실시. 천골 부위 피부 관찰, 이상 없음. 보습 크림 도포 후 체위변경.','혈압 측정: 152/94mmHg, 맥박 88회. 어지러움 호소하심. 안정 취하도록 안내하고 경과관찰 중.'],
+  '영양·식사': ['점심식사 700ml 중 600ml 섭취. 밥, 국, 반찬 고루 드심. 수분 섭취 하루 1500ml 권장.','간식 제공: 요거트, 바나나 절반. 연하 장애로 잘게 썰어 제공. 흡인 없이 안전하게 드심.'],
+  '특이사항': ['오후 2시경 다리 통증 호소. 보호자에게 전화 연락함. 병원 방문 예약 필요.','수분 섭취량이 평소보다 적어 자주 안내함. 특별한 이상 소견은 없음.','화장실 이동 중 미끄러짐으로 넘어져 무릎에 상처 발생. 즉시 냉찜질 시행 후 경과관찰 중.'],
+};
+
+function init() {
+  renderPatients(patients);
+  renderWaveBars();
+  renderServers();
+  updateStats();
+}
+
+function renderPatients(list) {
+  const el = document.getElementById('patientList');
+  el.innerHTML = list.map(p => `
+    <div class="patient-item" onclick="selectPatient('${p.id}')" id="pi-${p.id}">
+      <div class="patient-name">${p.name}</div>
+      <div class="patient-info">${p.age}세 · ${p.gender} · ${p.id}</div>
+      <span class="care-badge ${gradeClass[p.grade]}">${p.grade}</span>
+    </div>
+  `).join('');
+}
+
+function filterPatients(q) {
+  renderPatients(patients.filter(p => p.name.includes(q) || p.id.includes(q)));
+}
+
+function selectPatient(id) {
+  selectedPatient = patients.find(p=>p.id===id);
+  document.querySelectorAll('.patient-item').forEach(el=>el.classList.remove('active'));
+  const el = document.getElementById('pi-'+id);
+  if(el) el.classList.add('active');
+  document.getElementById('selectedName').textContent = selectedPatient.name;
+  document.getElementById('selectedInfo').textContent = `${selectedPatient.id} · ${selectedPatient.grade} · 담당: ${selectedPatient.careWorker}`;
+  document.getElementById('footerInfo').textContent = `선택됨: ${selectedPatient.name}`;
+  renderHistory();
+  renderPatientDetail();
+}
+
+function renderWaveBars() {
+  const wf = document.getElementById('waveform');
+  wf.innerHTML = Array.from({length:20},(_,i)=>`<div class="wave-bar" id="wb${i}" style="height:4px"></div>`).join('');
+}
+
+function toggleRecord() {
+  if(!selectedPatient) { showToast('⚠️ 수급자를 먼저 선택해 주세요'); return; }
+  if(isRecording) stopRecord();
+  else startRecord();
+}
+
+function startRecord() {
+  isRecording = true;
+  seconds = 0;
+  const btn = document.getElementById('recordBtn');
+  btn.className = 'record-btn recording';
+  document.getElementById('recordIcon').className = 'ti ti-square';
+  document.getElementById('statusText').textContent = '녹음 중... (버튼을 눌러 정지)';
+
+  recordingTimer = setInterval(()=>{
+    seconds++;
+    const m = String(Math.floor(seconds/60)).padStart(2,'0');
+    const s = String(seconds%60).padStart(2,'0');
+    document.getElementById('timer').textContent = m+':'+s;
+  },1000);
+
+  waveInterval = setInterval(()=>{
+    for(let i=0;i<20;i++){
+      const h = isRecording ? Math.floor(4+Math.random()*26) : 4;
+      const bar = document.getElementById('wb'+i);
+      if(bar){bar.style.height=h+'px';bar.classList.toggle('active',isRecording);}
+    }
+  },100);
+}
+
+function stopRecord() {
+  isRecording = false;
+  clearInterval(recordingTimer);
+  clearInterval(waveInterval);
+  for(let i=0;i<20;i++){const b=document.getElementById('wb'+i);if(b){b.style.height='4px';b.classList.remove('active');}}
+
+  const btn = document.getElementById('recordBtn');
+  btn.className = 'record-btn processing';
+  document.getElementById('recordIcon').className = 'ti ti-loader';
+  document.getElementById('statusText').textContent = 'AI 변환 중...';
+
+  setTimeout(()=>{
+    btn.className = 'record-btn idle';
+    document.getElementById('recordIcon').className = 'ti ti-microphone';
+    document.getElementById('statusText').textContent = '변환 완료';
+
+    const samples = sampleTexts[selectedType] || sampleTexts['특이사항'];
+    const text = samples[Math.floor(Math.random()*samples.length)];
+    document.getElementById('transcriptionArea').value = text;
+    runGeneration(text);
+  },1500);
+}
+
+// --- AI 기록 생성 시뮬레이션 (5유형별_AI프롬프트_설계.md 로직 기반, 실제 LLM 호출 없이 규칙 기반으로 재현) ---
+
+const INCIDENT_KEYWORDS = ['낙상','넘어짐','미끄러짐','부딪힘','상처','출혈','골절','화상','사레','질식','오연','실종','배회','의식소실','응급실','119'];
+
+function detectIncident(text) {
+  return INCIDENT_KEYWORDS.some(k => text.includes(k));
+}
+
+function detectNursingAbnormal(text) {
+  const bp = text.match(/(\d{2,3})\s*\/\s*(\d{2,3})\s*mmHg/);
+  if (bp) {
+    const sys = parseInt(bp[1],10), dia = parseInt(bp[2],10);
+    if (sys >= 140 || sys <= 90 || dia >= 90) return true;
+  }
+  const temp = text.match(/([\d.]+)\s*도/);
+  if (temp && parseFloat(temp[1]) >= 37.5) return true;
+  return /이상반응|발열|호흡곤란|어지러움|구토/.test(text);
+}
+
+function nowTimeLabel() { return new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}); }
+function nowFullLabel() { return new Date().toLocaleString('ko-KR'); }
+function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function generateOutputs(type, text, patient) {
+  const result = { type, isIncident:false, requiresManualReview:false };
+
+  if (type === '신체활동지원') {
+    const hasNote = /낙상|넘어|미끄러|부딪|상처|발적/.test(text);
+    result.feeReport = `[수행시간] ${nowTimeLabel()}\n[지원내용] ${text}\n[수급자 반응 및 상태] 관찰된 내용 기반, 특이 반응 없음\n[특이사항] ${hasNote ? '위 지원내용 참고, 경과관찰 필요' : '없음'}`;
+    result.handover = `${patient.name}님 - ${text} 다음 근무자는 이동 시 낙상 위험 및 피부 상태를 이어서 확인해 주세요.`;
+    result.guardianMsg = `안녕하세요, ${patient.name}님 보호자님. 오늘 세면 및 이동 등 신체활동 지원을 도와드렸고, 편안하게 잘 지내고 계세요.`;
+  } else if (type === '인지활동지원') {
+    const participation = /거부/.test(text) ? '참여 거부' : /소극/.test(text) ? '소극적 참여' : '적극적 참여';
+    const noteWorthy = /반복해서 물어|불안|초조/.test(text);
+    result.feeReport = `[프로그램명/활동내용] ${text}\n[참여도] ${participation}\n[인지·정서 반응] 관찰 사실 위주 기재\n[특이사항] ${noteWorthy ? '반복 질문/정서 변화 관찰됨' : '특이사항 없음'}`;
+    result.handover = `${patient.name}님 ${participation} 상태로 활동 진행. 다음 근무자는 정서 변화 및 반복 질문 여부를 이어서 관찰해 주세요.`;
+    result.guardianMsg = `안녕하세요, ${patient.name}님 보호자님. 오늘 즐겁게 활동에 참여하셨어요. 센터에서 계속 지켜보고 있으니 안심하세요.`;
+  } else if (type === '간호처치') {
+    result.requiresManualReview = detectNursingAbnormal(text);
+    result.feeReport = `[처치내용] ${text}\n[수치] 원문에 명시된 수치만 기재\n[이상반응 유무] ${result.requiresManualReview ? '있음 (확인 필요)' : '없음'}\n[다음 처치 예정] 확인 필요`;
+    result.handover = `${patient.name}님 처치 내용: ${text} ${result.requiresManualReview ? '- 이상반응 소견 있어 다음 근무자 확인 필요.' : '- 특이사항 없음.'}`;
+    result.guardianMsg = result.requiresManualReview
+      ? '간호팀 확인 후 개별 연락이 필요합니다 (카카오톡 자동 전송 보류).'
+      : `안녕하세요, ${patient.name}님 보호자님. 오늘 처치를 안전하게 도와드렸어요. 특이사항 없이 안정적으로 지내고 계세요.`;
+  } else if (type === '영양·식사') {
+    const safetyIssue = /사레|삼킴곤란|거부|흡인/.test(text);
+    result.feeReport = `[식사형태] 원문 참고\n[섭취량] ${text}\n[식사 중 특이사항] ${safetyIssue ? '삼킴 관련 주의 필요' : '특이사항 없음'}\n[수분섭취] 원문 참고`;
+    result.handover = `${patient.name}님 식사 내용: ${text} ${safetyIssue ? '- 삼킴곤란/사레 관련 다음 식사 시 주의 관찰 필요.' : '- 특이사항 없음.'}`;
+    result.guardianMsg = `안녕하세요, ${patient.name}님 보호자님. 오늘 식사를 잘 챙겨드렸어요. ${safetyIssue ? '식사 중 주의가 필요한 부분이 있어 계속 세심히 살펴보고 있습니다.' : '평소와 같이 편안하게 잘 드셨습니다.'}`;
+  } else if (type === '특이사항') {
+    result.isIncident = detectIncident(text);
+    if (!result.isIncident) {
+      result.feeReport = `[발생시간] ${nowTimeLabel()}\n[상황내용] ${text}\n[조치사항] 관찰 및 필요 조치 시행\n[경과관찰 필요 여부] 필요`;
+      result.handover = `${patient.name}님 특이사항: ${text} 다음 근무자는 경과를 이어서 관찰해 주세요.`;
+      result.guardianMsg = `안녕하세요, ${patient.name}님 보호자님. ${text} 큰 이상은 없으니 안심하세요.`;
+    } else {
+      result.feeReport = `[발생시간] ${nowTimeLabel()}\n[상황내용] ${text}\n[조치사항] 즉시 대응 및 경과관찰 중\n[경과관찰 필요 여부] 필요 (사고 분류)`;
+      result.handover = `⚠ 사고 발생: ${patient.name}님 - ${text} 경과 관찰 및 담당자 지시 확인 필요.`;
+      result.guardianMsg = '담당자가 직접 유선 연락 예정입니다.';
+      result.incidentReport = `[발생일시] ${nowFullLabel()}\n[발생장소] 확인 필요\n[사고유형] ${INCIDENT_KEYWORDS.filter(k=>text.includes(k)).join(', ') || '확인 필요'}\n[사고 발생 경위] ${text}\n[초기 대응 조치] 확인 필요\n[통보 여부 및 대상] 확인 필요 (가족 / 기관장 / 관할 보험사 / 지자체)\n[재발방지대책] 확인 필요 (담당자 검토 필요)`;
+    }
+  }
+  return result;
+}
+
+let currentOutputs = null;
+let kakaoPreviewShown = false;
+
+function runGeneration(text) {
+  if (!selectedPatient) { showToast('⚠️ 수급자를 먼저 선택해 주세요'); return; }
+  kakaoPreviewShown = false;
+  currentOutputs = generateOutputs(selectedType, text, selectedPatient);
+  renderOutputs();
+  if (currentOutputs.isIncident) {
+    setTimeout(()=>showToast('🚨 담당자(관리자/센터장)에게 사고 알림이 전송되었습니다'), 400);
+  }
+}
+
+function generateFromText() {
+  const text = document.getElementById('transcriptionArea').value.trim();
+  if (!text) { showToast('⚠️ 기록 내용을 입력해 주세요'); return; }
+  runGeneration(text);
+}
+
+function renderOutputs() {
+  const section = document.getElementById('resultSection');
+  const el = document.getElementById('outputCards');
+  const o = currentOutputs;
+  if (!o) { section.style.display = 'none'; el.innerHTML = ''; return; }
+  section.style.display = 'block';
+
+  let banner = '';
+  if (o.isIncident) {
+    banner = `<div class="incident-banner"><i class="ti ti-alert-triangle" aria-hidden="true"></i> 사고로 분류되었습니다 — 카카오톡 자동 전송이 차단되고 담당자에게 즉시 알림이 전송되었습니다.</div>`;
+  } else if (o.requiresManualReview) {
+    banner = `<div class="review-banner"><i class="ti ti-alert-circle" aria-hidden="true"></i> 이상반응이 감지되어 카카오톡 자동 전송이 보류되었습니다. 간호팀 수동 검토가 필요합니다.</div>`;
+  }
+
+  const cards = [
+    { title:'급여기록지', icon:'ti-file-text', body:o.feeReport },
+    { title:'인수인계', icon:'ti-transfer', body:o.handover },
+  ];
+  if (o.incidentReport) cards.push({ title:'사고보고서', icon:'ti-alert-triangle', body:o.incidentReport, incident:true });
+
+  let cardsHtml = cards.map(c => `
+    <div class="output-card ${c.incident?'incident':''}">
+      <div class="output-card-header"><i class="ti ${c.icon}" aria-hidden="true"></i> ${c.title}</div>
+      <div class="output-card-body">${escapeHtml(c.body)}</div>
+    </div>
+  `).join('');
+
+  const blocked = o.isIncident || o.requiresManualReview;
+  const kakaoBody = blocked
+    ? `<div class="output-card-body">${escapeHtml(o.guardianMsg)}</div>`
+    : (kakaoPreviewShown
+        ? `<div class="kakao-preview">${escapeHtml(o.guardianMsg)}</div><div class="kakao-actions"><button class="btn btn-primary" onclick="sendKakao()"><i class="ti ti-send" aria-hidden="true"></i> 전송</button></div>`
+        : `<div class="kakao-actions"><button class="btn btn-secondary" onclick="previewKakao()"><i class="ti ti-eye" aria-hidden="true"></i> 미리보기 확인</button></div>`
+      );
+
+  cardsHtml += `
+    <div class="output-card">
+      <div class="output-card-header"><i class="ti ti-brand-kakao-talk" aria-hidden="true"></i> 보호자 카카오톡 안내</div>
+      ${kakaoBody}
+    </div>
+  `;
+
+  el.innerHTML = banner + cardsHtml;
+}
+
+function previewKakao() { kakaoPreviewShown = true; renderOutputs(); }
+
+function sendKakao() {
+  showToast('✅ 보호자에게 카카오톡 안내가 전송되었습니다');
+  kakaoPreviewShown = false;
+  renderOutputs();
+}
+
+function selectType(btn, type) {
+  selectedType = type;
+  document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentOutputs = null;
+  renderOutputs();
+}
+
+function clearRecord() {
+  document.getElementById('transcriptionArea').value = '';
+  document.getElementById('statusText').textContent = '마이크 버튼을 눌러 녹음 시작';
+  document.getElementById('timer').textContent = '00:00';
+  seconds = 0;
+  currentOutputs = null;
+  renderOutputs();
+}
+
+function saveRecord() {
+  const text = document.getElementById('transcriptionArea').value.trim();
+  if(!text){ showToast('⚠️ 기록 내용을 입력해 주세요'); return; }
+  if(!selectedPatient){ showToast('⚠️ 수급자를 선택해 주세요'); return; }
+
+  const now = new Date();
+  const record = {
+    id: 'R'+Date.now(),
+    patientId: selectedPatient.id,
+    patientName: selectedPatient.name,
+    type: selectedType,
+    text,
+    time: now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),
+    date: now.toLocaleDateString('ko-KR'),
+    duration: seconds,
+    syncStatus: 'pending',
+    careWorker: selectedPatient.careWorker,
+    outputs: currentOutputs,
+    isIncident: !!(currentOutputs && currentOutputs.isIncident),
+    requiresManualReview: !!(currentOutputs && currentOutputs.requiresManualReview),
+  };
+
+  records.unshift(record);
+  try { localStorage.setItem('careRecords', JSON.stringify(records.slice(0,200))); } catch(e){}
+  pendingRecords++;
+  updateStats();
+  renderHistory();
+  clearRecord();
+  showToast('✅ 기록이 저장되었습니다');
+
+  setTimeout(()=>autoSync(record.id), 2000);
+}
+
+function autoSync(recordId) {
+  const idx = records.findIndex(r=>r.id===recordId);
+  if(idx>=0){ records[idx].syncStatus='synced'; pendingRecords=Math.max(0,pendingRecords-1); }
+  updateStats();
+  renderHistory();
+  const now = new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+  lastSync = now;
+  localStorage.setItem('lastSync', now);
+  document.getElementById('lastSyncTime').textContent = now;
+}
+
+function renderHistory() {
+  const el = document.getElementById('recordsList');
+  const patRecords = selectedPatient ? records.filter(r=>r.patientId===selectedPatient.id) : [];
+  if(!patRecords.length){
+    el.innerHTML = '<div class="empty-state"><i class="ti ti-notes-off" style="font-size:28px;display:block;margin-bottom:8px"></i>기록이 없습니다</div>';
+    return;
+  }
+  el.innerHTML = patRecords.map(r=>`
+    <div class="record-entry">
+      <div class="record-entry-header">
+        <span>
+          <span class="record-entry-type ${typeStyle[r.type]||'rt-care'}">${r.type}</span>
+          ${r.isIncident?'<span class="record-entry-type rt-medical" style="margin-left:4px">⚠ 사고</span>':(r.requiresManualReview?'<span class="record-entry-type rt-nutrition" style="margin-left:4px">검토 필요</span>':'')}
+        </span>
+        <span class="record-entry-time">${r.date} ${r.time}</span>
+      </div>
+      <div class="record-entry-text">${r.text}</div>
+      <div class="record-entry-footer">
+        <span class="record-status ${r.syncStatus==='synced'?'synced':'pending'}">
+          <i class="ti ${r.syncStatus==='synced'?'ti-cloud-check':'ti-cloud-pause'}" aria-hidden="true"></i>
+          ${r.syncStatus==='synced'?'동기화 완료':'동기화 대기'}
+        </span>
+        ${r.duration?`<span style="font-size:11px;color:var(--color-text-secondary)"><i class="ti ti-microphone" aria-hidden="true"></i> ${r.duration}초</span>`:''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderPatientDetail() {
+  const p = selectedPatient;
+  if(!p){ document.getElementById('patientDetailContent').innerHTML = '<div class="empty-state">수급자를 선택해 주세요</div>'; return; }
+  document.getElementById('patientDetailContent').innerHTML = `
+    <div class="patient-card">
+      <div class="patient-card-header">
+        <div class="avatar">${p.initials}</div>
+        <div>
+          <div style="font-size:16px;font-weight:500;color:var(--color-text-primary)">${p.name}</div>
+          <div style="font-size:12px;color:var(--color-text-secondary)">${p.id}</div>
+          <span class="care-badge ${gradeClass[p.grade]}" style="margin-top:4px;display:inline-block">${p.grade}</span>
+        </div>
+      </div>
+      <div class="patient-meta">
+        <div class="meta-item"><span class="meta-label">나이</span><span class="meta-value">${p.age}세 (${p.gender})</span></div>
+        <div class="meta-item"><span class="meta-label">담당자</span><span class="meta-value">${p.careWorker}</span></div>
+        <div class="meta-item"><span class="meta-label">연락처</span><span class="meta-value">${p.phone}</span></div>
+        <div class="meta-item"><span class="meta-label">보호자</span><span class="meta-value">${p.guardian}</span></div>
+        <div class="meta-item" style="grid-column:1/-1"><span class="meta-label">주소</span><span class="meta-value">${p.address}</span></div>
+        <div class="meta-item" style="grid-column:1/-1"><span class="meta-label">주요질환</span><span class="meta-value">${p.conditions.join(', ')}</span></div>
+      </div>
+    </div>
+    <div class="section-label">최근 기록 요약</div>
+    <div class="db-grid">
+      ${['신체활동지원','간호처치','영양·식사','인지활동지원'].map(t=>{
+        const cnt = records.filter(r=>r.patientId===p.id&&r.type===t).length;
+        return `<div class="db-card"><div class="db-card-title">${t}</div><div class="db-stat">${cnt}</div><div class="db-sub">건</div></div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderServers() {
+  document.getElementById('serverList').innerHTML = servers.map((s,i)=>`
+    <div class="server-item">
+      <div>
+        <div class="server-name">${s.name}</div>
+        <div class="server-url">${s.url}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="server-status ${s.enabled?'synced':''}">
+          <div class="sync-dot ${s.enabled?'online':'offline'}" style="width:5px;height:5px"></div>
+          ${s.enabled?'연결됨':'비활성'}
+        </span>
+        <button class="toggle ${s.enabled?'on':'off'}" onclick="toggleServer(${i})" aria-label="${s.name} 토글"></button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleServer(i) {
+  servers[i].enabled = !servers[i].enabled;
+  renderServers();
+  showToast(servers[i].enabled ? `✅ ${servers[i].name} 연결됨` : `⚪ ${servers[i].name} 비활성화`);
+}
+
+function updateStats() {
+  document.getElementById('totalRecords').textContent = records.length;
+  document.getElementById('pendingCount').textContent = pendingRecords;
+  if(lastSync) document.getElementById('lastSyncTime').textContent = lastSync;
+}
+
+function triggerSync() {
+  const btn = document.getElementById('syncBtn');
+  const icon = document.getElementById('syncIcon');
+  btn.classList.add('syncing');
+  icon.className = 'ti ti-refresh';
+  document.getElementById('syncText').textContent = '동기화 중...';
+  document.getElementById('statusDot').className = 'sync-dot syncing';
+  document.getElementById('statusLabel').textContent = '동기화 중...';
+
+  setTimeout(()=>{
+    records.forEach(r=>r.syncStatus='synced');
+    pendingRecords = 0;
+    try { localStorage.setItem('careRecords', JSON.stringify(records.slice(0,200))); } catch(e){}
+    const now = new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+    lastSync = now;
+    localStorage.setItem('lastSync', now);
+    btn.classList.remove('syncing');
+    document.getElementById('syncText').textContent = '동기화';
+    document.getElementById('statusDot').className = 'sync-dot online';
+    document.getElementById('statusLabel').textContent = '서버 연결됨';
+    updateStats();
+    renderHistory();
+    showToast('✅ 모든 기록 동기화 완료');
+  }, 2200);
+}
+
+function exportData() {
+  const rows = records.map(r=>[r.date,r.time,r.patientName,r.patientId,r.type,'"'+r.text+'"',r.syncStatus].join(','));
+  const csv = '날짜,시간,수급자명,ID,기록유형,내용,동기화상태\n'+rows.join('\n');
+  const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '케어기록_'+new Date().toLocaleDateString('ko-KR').replace(/\./g,'').replace(/ /g,'')+'.csv';
+  a.click();
+  showToast('📥 CSV 내보내기 완료');
+}
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['record','history','patient','settings'].forEach(t=>{
+    document.getElementById('tab-'+t).style.display = t===name?'block':'none';
+  });
+  if(name==='history') renderHistory();
+  if(name==='patient') renderPatientDetail();
+  if(name==='settings') renderServers();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2800);
+}
+
+init();
+</script>
+</body>
+</html>
