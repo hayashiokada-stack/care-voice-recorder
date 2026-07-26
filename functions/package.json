@@ -1,0 +1,12 @@
+{
+  "name": "care-voice-recorder-functions",
+  "description": "음성 기록 앱 STT 백엔드 (OpenAI Whisper 중계)",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-functions": "^6.0.1"
+  },
+  "private": true
+}

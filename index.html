@@ -411,19 +411,21 @@ let servers = [
 let pendingRecords = records.filter(r=>r.syncStatus==='pending').length;
 let lastSync = localStorage.getItem('lastSync') || null;
 
-const sampleTexts = {
-  '신체활동지원': ['오전 9시 기상 도움, 세안 및 구강청결 지원. 보행 보조기 사용하여 거실 이동 도움. 낙상 위험 없었음.','목욕 지원 실시. 허리 부분 피부 상태 확인, 발적 없음. 체위변경 2회 실시.'],
-  '인지활동지원': ['오늘의 날짜, 날씨 확인 활동. 사진 보며 가족 이름 맞추기 진행. 집중력 유지 15분. 기분 양호.','음악 듣기 활동. 좋아하는 트로트 음악에 반응 좋음. 손뼉 치며 따라 부름.'],
-  '간호처치': ['혈압 측정: 138/86mmHg, 맥박 72회. 혈당 측정: 식전 126mg/dL. 혈압약 오전 1정 복용 확인.','욕창 예방 처치 실시. 천골 부위 피부 관찰, 이상 없음. 보습 크림 도포 후 체위변경.','혈압 측정: 152/94mmHg, 맥박 88회. 어지러움 호소하심. 안정 취하도록 안내하고 경과관찰 중.'],
-  '영양·식사': ['점심식사 700ml 중 600ml 섭취. 밥, 국, 반찬 고루 드심. 수분 섭취 하루 1500ml 권장.','간식 제공: 요거트, 바나나 절반. 연하 장애로 잘게 썰어 제공. 흡인 없이 안전하게 드심.'],
-  '특이사항': ['오후 2시경 다리 통증 호소. 보호자에게 전화 연락함. 병원 방문 예약 필요.','수분 섭취량이 평소보다 적어 자주 안내함. 특별한 이상 소견은 없음.','화장실 이동 중 미끄러짐으로 넘어져 무릎에 상처 발생. 즉시 냉찜질 시행 후 경과관찰 중.'],
-};
+// Firebase Cloud Function (asia-northeast3, 프로젝트: audio-communication-239bf) — 오디오를 받아 OpenAI Whisper로 전사
+const TRANSCRIBE_ENDPOINT = 'https://asia-northeast3-audio-communication-239bf.cloudfunctions.net/transcribe';
+const canRecordAudio = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
 
 function init() {
   renderPatients(patients);
   renderWaveBars();
   renderServers();
   updateStats();
+  if (!canRecordAudio) {
+    document.getElementById('statusText').textContent = '이 브라우저는 음성 녹음을 지원하지 않습니다. 아래에 직접 입력해 주세요';
+    const btn = document.getElementById('recordBtn');
+    btn.style.opacity = '0.4';
+    btn.style.cursor = 'not-allowed';
+  }
 }
 
 function renderPatients(list) {
@@ -458,15 +460,41 @@ function renderWaveBars() {
   wf.innerHTML = Array.from({length:20},(_,i)=>`<div class="wave-bar" id="wb${i}" style="height:4px"></div>`).join('');
 }
 
+let mediaStream = null;
+let mediaRecorder = null;
+let audioChunks = [];
+
 function toggleRecord() {
   if(!selectedPatient) { showToast('⚠️ 수급자를 먼저 선택해 주세요'); return; }
   if(isRecording) stopRecord();
   else startRecord();
 }
 
-function startRecord() {
+async function startRecord() {
+  if (!canRecordAudio) {
+    showToast('⚠️ 이 브라우저는 음성 녹음을 지원하지 않습니다. 직접 입력해 주세요');
+    return;
+  }
+
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    showToast('⚠️ 마이크 권한이 거부되었거나 사용할 수 없습니다');
+    return;
+  }
+
   isRecording = true;
   seconds = 0;
+  audioChunks = [];
+
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm')
+    ? 'audio/webm'
+    : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+  mediaRecorder = mimeType ? new MediaRecorder(mediaStream, { mimeType }) : new MediaRecorder(mediaStream);
+  mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) audioChunks.push(e.data); };
+  mediaRecorder.onstop = handleRecordingStopped;
+  mediaRecorder.start();
+
   const btn = document.getElementById('recordBtn');
   btn.className = 'record-btn recording';
   document.getElementById('recordIcon').className = 'ti ti-square';
@@ -499,16 +527,63 @@ function stopRecord() {
   document.getElementById('recordIcon').className = 'ti ti-loader';
   document.getElementById('statusText').textContent = 'AI 변환 중...';
 
-  setTimeout(()=>{
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+}
+
+async function handleRecordingStopped() {
+  const btn = document.getElementById('recordBtn');
+  const mimeType = mediaRecorder.mimeType || 'audio/webm';
+  const blob = new Blob(audioChunks, { type: mimeType });
+  audioChunks = [];
+
+  const resetIdle = (statusText) => {
     btn.className = 'record-btn idle';
     document.getElementById('recordIcon').className = 'ti ti-microphone';
-    document.getElementById('statusText').textContent = '변환 완료';
+    document.getElementById('statusText').textContent = statusText;
+  };
 
-    const samples = sampleTexts[selectedType] || sampleTexts['특이사항'];
-    const text = samples[Math.floor(Math.random()*samples.length)];
-    document.getElementById('transcriptionArea').value = text;
-    runGeneration(text);
-  },1500);
+  if (blob.size === 0) {
+    resetIdle('마이크 버튼을 눌러 녹음 시작');
+    showToast('⚠️ 녹음된 음성이 없습니다');
+    return;
+  }
+
+  try {
+    const base64 = await blobToBase64(blob);
+    const res = await fetch(TRANSCRIBE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audioBase64: base64, mimeType }),
+    });
+    if (!res.ok) throw new Error('서버 오류');
+    const data = await res.json();
+    const text = (data.text || '').trim();
+
+    if (text) {
+      resetIdle('변환 완료');
+      document.getElementById('transcriptionArea').value = text;
+      runGeneration(text);
+    } else {
+      resetIdle('인식된 음성이 없습니다. 다시 시도해 주세요');
+    }
+  } catch (err) {
+    resetIdle('마이크 버튼을 눌러 녹음 시작');
+    showToast('⚠️ 음성 변환에 실패했습니다. 다시 시도해 주세요');
+  }
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result || '';
+      const commaIdx = result.indexOf(',');
+      resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 // --- AI 기록 생성 시뮬레이션 (5유형별_AI프롬프트_설계.md 로직 기반, 실제 LLM 호출 없이 규칙 기반으로 재현) ---
