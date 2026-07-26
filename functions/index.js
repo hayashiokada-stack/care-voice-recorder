@@ -9,6 +9,15 @@ const ALLOWED_ORIGINS = ["https://hayashiokada-stack.github.io"];
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // OpenAI 업로드 제한과 동일
 
+function extensionForMimeType(mimeType) {
+  const type = (mimeType || "").toLowerCase();
+  if (type.includes("webm")) return "webm";
+  if (type.includes("wav")) return "wav";
+  if (type.includes("mp3") || type.includes("mpeg")) return "mp3";
+  if (type.includes("mp4") || type.includes("m4a") || type.includes("aac")) return "mp4";
+  return "mp4";
+}
+
 exports.transcribe = onRequest(
   {
     secrets: [OPENAI_API_KEY],
@@ -43,7 +52,7 @@ exports.transcribe = onRequest(
     }
 
     try {
-      const extension = (mimeType || "").includes("webm") ? "webm" : "mp4";
+      const extension = extensionForMimeType(mimeType);
       const formData = new FormData();
       formData.append(
         "file",
