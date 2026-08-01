@@ -1332,6 +1332,23 @@ async function fetchAgoraToken(channelName, account) {
   return data.token;
 }
 
+// Agora Web SDK의 문자열 UID는 ASCII만 허용하므로, 한글 직원 이름을 그대로 넘기면
+// join() 단계에서 항상 INVALID_PARAMS로 실패한다. base64url로 인코딩해 우회하고
+// 표시할 때만 다시 이름으로 복원한다.
+function agoraSafeUid(name) {
+  return btoa(unescape(encodeURIComponent(String(name)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function agoraNameFromUid(uid) {
+  try {
+    let b64 = String(uid).replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    return decodeURIComponent(escape(atob(b64)));
+  } catch (e) {
+    return String(uid);
+  }
+}
+
 function createAgoraClient() {
   const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
@@ -1340,7 +1357,7 @@ function createAgoraClient() {
       await client.subscribe(user, mediaType);
       if (mediaType === 'audio' && user.audioTrack) {
         user.audioTrack.play();
-        activeSpeakers.set(String(user.uid), true);
+        activeSpeakers.set(agoraNameFromUid(user.uid), true);
         renderActiveSpeakers();
       }
     } catch (e) {
@@ -1350,13 +1367,13 @@ function createAgoraClient() {
 
   client.on('user-unpublished', (user, mediaType) => {
     if (mediaType === 'audio') {
-      activeSpeakers.delete(String(user.uid));
+      activeSpeakers.delete(agoraNameFromUid(user.uid));
       renderActiveSpeakers();
     }
   });
 
   client.on('user-left', (user) => {
-    activeSpeakers.delete(String(user.uid));
+    activeSpeakers.delete(agoraNameFromUid(user.uid));
     renderActiveSpeakers();
   });
 
@@ -1375,7 +1392,7 @@ function createAgoraClient() {
 
   client.on('token-privilege-will-expire', async () => {
     try {
-      const newToken = await fetchAgoraToken(pttChannelName, currentStaffName);
+      const newToken = await fetchAgoraToken(pttChannelName, agoraSafeUid(currentStaffName));
       await client.renewToken(newToken);
     } catch (e) {
       console.error('무전 토큰 갱신 실패', e);
@@ -1391,14 +1408,15 @@ async function joinPttChannel(channelName) {
   if (pttJoined || pttJoining) return;
 
   const targetChannel = channelName || pttChannelName;
+  const uid = agoraSafeUid(currentStaffName);
   pttJoining = true;
   updatePttConnectionUi('CONNECTING');
 
   try {
     const appId = await fetchAgoraAppId();
-    const token = await fetchAgoraToken(targetChannel, currentStaffName);
+    const token = await fetchAgoraToken(targetChannel, uid);
     if (!agoraClient) agoraClient = createAgoraClient();
-    await agoraClient.join(appId, targetChannel, token, currentStaffName);
+    await agoraClient.join(appId, targetChannel, token, uid);
     pttChannelName = targetChannel;
     pttJoined = true;
     pttReconnectDelay = 3000;
