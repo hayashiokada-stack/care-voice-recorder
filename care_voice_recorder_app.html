@@ -78,6 +78,7 @@
   .grade3 { background: #EAF3DE; color: #3B6D11; }
   .grade4 { background: #E6F1FB; color: #185FA5; }
   .grade5 { background: #EEEDFE; color: #534AB7; }
+  .grade-cog { background: #ECEDEF; color: #4A5568; }
 
   .main { display: flex; flex-direction: column; overflow: hidden; }
   .topbar { padding: 10px 16px; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; justify-content: space-between; }
@@ -496,15 +497,73 @@
 
 <script>
 const patients = [
-  { id:'P001', name:'김순자', age:82, gender:'여', grade:'1등급', address:'서울 노원구', guardian:'김민준 (아들)', phone:'010-1234-5678', conditions:['치매','고혈압','당뇨'], careWorker:'박간호', initials:'김순' },
-  { id:'P002', name:'이복남', age:76, gender:'남', grade:'2등급', address:'서울 도봉구', guardian:'이지현 (딸)', phone:'010-2345-6789', conditions:['파킨슨병','관절염'], careWorker:'최요양', initials:'이복' },
-  { id:'P003', name:'박영희', age:88, gender:'여', grade:'1등급', address:'서울 강북구', guardian:'박철수 (아들)', phone:'010-3456-7890', conditions:['뇌졸중','욕창'], careWorker:'박간호', initials:'박영' },
-  { id:'P004', name:'정한수', age:71, gender:'남', grade:'3등급', address:'서울 성북구', guardian:'정민아 (딸)', phone:'010-4567-8901', conditions:['심장질환'], careWorker:'김요양', initials:'정한' },
-  { id:'P005', name:'최말순', age:79, gender:'여', grade:'2등급', address:'서울 동대문구', guardian:'최준호 (아들)', phone:'010-5678-9012', conditions:['당뇨','백내장'], careWorker:'최요양', initials:'최말' },
-  { id:'P006', name:'윤기철', age:85, gender:'남', grade:'4등급', address:'서울 중랑구', guardian:'윤소희 (딸)', phone:'010-6789-0123', conditions:['경도인지장애'], careWorker:'김요양', initials:'윤기' },
+  { id:'P001', name:'강정순', age:79, gender:'여', grade:'5등급', address:'인천 서구 청라한내로 82 (청라동) 8층 816호', guardian:'이미재 (자녀)', phone:'010-2406-6339', conditions:['경증치매(4년전)', '뇌종양수술(40-50년전)', '골다공증', '어지럼증 호소', '갈비뼈실금'], careWorker:'미배정', initials:'강정' },
+  { id:'P002', name:'구자종', age:86, gender:'여', grade:'5등급', address:'인천 서해구 심곡동 242-5 1동 칠성쎈스뷰', guardian:'한정이 (자녀)', phone:'010-9264-5940', conditions:['고혈압', '당뇨', '치매'], careWorker:'미배정', initials:'구자' },
+  { id:'P003', name:'국희정', age:70, gender:'남', grade:'2등급', address:'인천 서구 청라한울로 95 (청라동, 청라제일풍경채) 309동 205호', guardian:'박아영 (배우자)', phone:'010-6334-6108', conditions:['23년 10월 심장수술', '뇌졸중(왼쪽 편마비)', '당뇨'], careWorker:'미배정', initials:'국희' },
+  { id:'P004', name:'김경태', age:76, gender:'남', grade:'4등급', address:'인천 부평구 부영로 196 (부평동, 대림아파트) 2동 1003호', guardian:'이계숙 (배우자)', phone:'010-7933-5752', conditions:['뇌경색(편마비', '7년전)', '무릎(왼쪽) 인공관절수술(10년전)', '폐 2/3절제', '경추수술'], careWorker:'미배정', initials:'김경' },
+  { id:'P005', name:'김광영', age:66, gender:'남', grade:'3등급', address:'인천 서구 청라루비로 68 (청라동, 인천청라 한일베라체) 462동 1405호', guardian:'김은숙 (배우자)', phone:'010-4743-6410', conditions:['뇌출혈-왼쪽편마비', '심근경색-스텐트시술'], careWorker:'미배정', initials:'김광' },
+  { id:'P006', name:'김대근', age:77, gender:'남', grade:'4등급', address:'인천 서구 원당대로839번길 31 (원당동, 더안 타운하우스) 106동 403호', guardian:'김소형 (자녀)', phone:'010-8538-6549', conditions:['알츠하이머치매', '섬망', '복강경수술(쓸개제거수술)'], careWorker:'미배정', initials:'김대' },
+  { id:'P007', name:'김동주', age:76, gender:'남', grade:'3등급', address:'인천 서구 청라커낼로 300 (청라동, 청라센트럴에일린의뜰) 105동 2006호', guardian:'우명준 (배우자)', phone:'010-3716-5627', conditions:['중풍', '치매정도는 낮음', '좌측 편마비(지팡이사용)'], careWorker:'미배정', initials:'김동' },
+  { id:'P008', name:'김막례', age:86, gender:'여', grade:'4등급', address:'인천 서구 가좌동 144-48 2층', guardian:'김영균 (자손)', phone:'010-9538-0597', conditions:['고혈압', '교통사고로 인한 허리 통증', '혈압약과 뇌건강약 복용'], careWorker:'미배정', initials:'김막' },
+  { id:'P009', name:'김말례', age:83, gender:'여', grade:'3등급', address:'인천 서구 청라한내로 39 (청라동, 청라우미린) 582동 401호', guardian:'인경애 (자부)', phone:'010-3945-5951', conditions:['고혈압', '치매', '뇌수두증', '엑스레이결과(식도열공탈장의심)'], careWorker:'미배정', initials:'김말' },
+  { id:'P010', name:'김명조', age:79, gender:'남', grade:'4등급', address:'인천 서구 가정로224번길 8 (석남동)', guardian:'김은숙 (자녀)', phone:'010-8495-1598', conditions:['뇌졸증', '고혈압(평소혈압180대)', '뇌경색', '난청'], careWorker:'미배정', initials:'김명' },
+  { id:'P011', name:'김성선', age:87, gender:'남', grade:'4등급', address:'인천 서구 청라루비로42번길 6-2 (청라동) 301호', guardian:'유복근 (배우자)', phone:'010-3723-9165', conditions:['뇌경색', '심근경색', '방광암수술', '고혈압', '당뇨', '요로감염', '폐혈증'], careWorker:'미배정', initials:'김성' },
+  { id:'P012', name:'김연배', age:77, gender:'남', grade:'3등급', address:'인천 서구 새오개로 109-1 (신현동, 금강하이츠빌) 2동 202호', guardian:'김선미 (자녀)', phone:'010-9258-8624', conditions:['뇌경색', '치매', '당뇨', '관상동맥질환', '심박동기삽입', '좌측편마비', '왼쪽시력 거의 없음', '백내장'], careWorker:'미배정', initials:'김연' },
+  { id:'P013', name:'김영훈', age:60, gender:'남', grade:'3등급', address:'인천 부평구 안남로123번길 46 (산곡동, 우성아파트) 401동 802호', guardian:'이영미 (배우자)', phone:'010-4925-6761', conditions:['강직성 척추염(98년도)', '뇌출혈(19년도쯤)', '좌측편마비'], careWorker:'미배정', initials:'김영' },
+  { id:'P014', name:'김정자', age:86, gender:'여', grade:'인지지원등급', address:'인천 서구 도요지로42번길 31-5 (경서동, 수자인) 202호', guardian:'박제현 (자녀)', phone:'010-9299-0737', conditions:['고혈압', '심장', '뇌신경 수술(24.03~4월)', '부정맥', '오른쪽 무릎 인공관절 수술'], careWorker:'미배정', initials:'김정' },
+  { id:'P015', name:'김제분', age:78, gender:'여', grade:'4등급', address:'인천 서구 중봉대로586번길 22 (청라동, 청라 엑슬루타워) 101동2901호', guardian:'양기하 (자녀)', phone:'010-7633-9598', conditions:['고지혈증', '심근경색증.우울증', '척추협착증.고혈압', '당뇨'], careWorker:'미배정', initials:'김제' },
+  { id:'P016', name:'김태윤', age:95, gender:'남', grade:'4등급', address:'인천 서구 중봉대로586번길 22 (청라동, 청라 엑슬루타워) 103동 3703호', guardian:'김관영 (자녀)', phone:'010-4237-1790', conditions:['26.05 루이소체 치매', '고혈압', '전립성 비대증 있으심. 과거에 역류성 식도염.'], careWorker:'미배정', initials:'김태' },
+  { id:'P017', name:'박금철', age:85, gender:'남', grade:'3등급', address:'인천 서구 청라커낼로 252 (청라동, 청라 롯데캐슬) 103동 1102호', guardian:'김춘자 (배우자)', phone:'010-2480-1197', conditions:['알츠하이머 치매(25.05)', '비뇨기과계통질환', '심장비대증'], careWorker:'미배정', initials:'박금' },
+  { id:'P018', name:'박노규', age:73, gender:'남', grade:'4등급', address:'인천 서해구 청라라임로 131 (청라동, 중흥에스클래스) 266동 802호', guardian:'남미자 (배우자)', phone:'010-8916-0812', conditions:[], careWorker:'미배정', initials:'박노' },
+  { id:'P019', name:'박삼분', age:91, gender:'여', grade:'1등급', address:'인천 서구 청라라임로 17 (청라동, 청라 힐데스하임) 121동 1004호', guardian:'한영욱 (자녀)', phone:'010-3788-9369', conditions:['치매', '뇌경색(오른쪽 편마비)', '고혈압'], careWorker:'미배정', initials:'박삼' },
+  { id:'P020', name:'박순연', age:69, gender:'여', grade:'3등급', address:'인천 서구 청라라임로 17 (청라동, 청라 힐데스하임) 126동 2006호', guardian:'이병증 (배우자)', phone:'010-6354-9712', conditions:['치매(20년도)', '치매약(아침', '저녁)'], careWorker:'미배정', initials:'박순' },
+  { id:'P021', name:'박영임', age:77, gender:'여', grade:'5등급', address:'인천 서구 청라커낼로 163 (청라동, 청라29블럭호반베르디움) 483동 1602호', guardian:'김영관 (자녀)', phone:'010-3640-7122', conditions:['알츠하이머치매(2년전)', '요실금(외출시 기저귀 착용)', '엑스레이결과(폐문종대의심', '우)'], careWorker:'미배정', initials:'박영' },
+  { id:'P022', name:'박정순', age:85, gender:'여', grade:'3등급', address:'인천 서구 청라라임로 109 (청라동, 호반베르디움) 호반베르디움 254-1302 **차단기 번호  254동 1302호 비번 : 1034', guardian:'이미경 (자녀)', phone:'010-9829-1288', conditions:['파킨슨', '퇴행성관절염', '척추협착증'], careWorker:'미배정', initials:'박정' },
+  { id:'P023', name:'반장환', age:66, gender:'남', grade:'3등급', address:'인천 서구 청라사파이어로 158 (청라동, 청라골드클래스) 573동 601호', guardian:'김미향 (배우자)', phone:'010-5576-9523', conditions:['뇌졸증', '고혈압. 청각저하. 좌측 눈 시력저하', '망막박리수술'], careWorker:'미배정', initials:'반장' },
+  { id:'P024', name:'배임순', age:92, gender:'여', grade:'4등급', address:'인천 서구 크리스탈로 148 (청라동, 청라 한화꿈에그린) 372동 401호', guardian:'김택수 (자녀)', phone:'010-2575-3575', conditions:['치매(11-12년전 판정. 혈관성 치매로 추측)', '고혈압', '고지혈증', '갑상선기능저하', '망상'], careWorker:'미배정', initials:'배임' },
+  { id:'P025', name:'서영희', age:77, gender:'여', grade:'인지지원등급', address:'인천 서구 비즈니스로 41 (청라동, 청라한양수자인) 554동 1404호', guardian:'국지현 (자녀)', phone:'010-8449-5025', conditions:['치매(경증)'], careWorker:'미배정', initials:'서영' },
+  { id:'P026', name:'송광석', age:68, gender:'남', grade:'4등급', address:'인천 서해구 청라한내로100번길 20 (청라동) 1208호', guardian:'송승훈 (자녀)', phone:'010-6337-0919', conditions:['당뇨', '파킨슨 증후군(서울아산병원에서 1년전 판정받음)고혈압', '기립성 저혈압'], careWorker:'미배정', initials:'송광' },
+  { id:'P027', name:'송영재', age:93, gender:'남', grade:'3등급', address:'인천 서구 청라커낼로 249 (청라동, 동양엔파트) 474동 203호', guardian:'윤재순 (자부)', phone:'010-5317-8898', conditions:['치매(5년전)', '허리디스크 수술(10년전)', '치매약 거부하셔서 안드심'], careWorker:'미배정', initials:'송영' },
+  { id:'P028', name:'송정자', age:80, gender:'여', grade:'5등급', address:'인천 계양구 아나지로299번길 24 (작전동) 1층 별미뼈해장국', guardian:'정선애 (자녀)', phone:'010-2778-6578', conditions:['고지혈증', '고혈압', '알츠하이머치매(2020)'], careWorker:'미배정', initials:'송정' },
+  { id:'P029', name:'송하섭', age:91, gender:'남', grade:'3등급', address:'인천 서구 비즈니스로28번길 13 (청라동, 청라 디 이스트) 561동 301호', guardian:'송민희 (자녀)', phone:'010-3959-8520', conditions:['관절수술', '손가락 마디 제거수술.당뇨'], careWorker:'미배정', initials:'송하' },
+  { id:'P030', name:'신말분', age:82, gender:'여', grade:'3등급', address:'인천 서해구 청라한내로 7 (청라동, 청라 힐스테이트) 514동 501호', guardian:'임갑순 (자녀)', phone:'010-2518-2114', conditions:[], careWorker:'미배정', initials:'신말' },
+  { id:'P031', name:'신순철', age:74, gender:'여', grade:'4등급', address:'인천 서구 청라커낼로 300 (청라동, 청라센트럴에일린의뜰) 101동 3505호', guardian:'김지현 (자녀)', phone:'010-4103-1344', conditions:['혈관성 치매(26.3)', '고혈압', '당뇨', '고지혈증 약 복용(20년 이상)', '흉추압박골절'], careWorker:'미배정', initials:'신순' },
+  { id:'P032', name:'심영흠', age:85, gender:'남', grade:'3등급', address:'인천 서구 청라한내로 7 (청라동, 청라 힐스테이트) 512동 201호', guardian:'심효영 (자녀)', phone:'010-5046-5546', conditions:['뇌경색으로 인한 혈관성 치매(전두엽쪽)', '빈혈', '고혈압', '당뇨', '신장기능저하'], careWorker:'미배정', initials:'심영' },
+  { id:'P033', name:'심재귀', age:80, gender:'여', grade:'4등급', address:'인천 서구 청라동 167-17 딜라이트타워2차 817호', guardian:'정은경 (자녀)', phone:'010-8961-7586', conditions:['왼쪽 눈 실명', '왼쪽 무릎 인공관절', '오른쪽 무릎 철심', '허리 협착증', '오른쪽 어깨 탈골'], careWorker:'미배정', initials:'심재' },
+  { id:'P034', name:'안병화', age:86, gender:'여', grade:'4등급', address:'인천 서구 청라커낼로 300 (청라동, 청라센트럴에일린의뜰) A동 1901호', guardian:'심영주 (자녀)', phone:'010-6811-6995', conditions:['황반변성(양쪽눈-시력장애)', '심장질환(10년전 스텐트삽입)', '치매(22년 8월)', '청력저하'], careWorker:'미배정', initials:'안병' },
+  { id:'P035', name:'안상경', age:70, gender:'여', grade:'4등급', address:'인천 서구 청라커낼로 232 (청라동, 청라엘에이치) 407동 301호', guardian:'명현미 (자녀)', phone:'010-2238-4950', conditions:['파킨슨', '고혈압', '당뇨'], careWorker:'미배정', initials:'안상' },
+  { id:'P036', name:'양승매', age:87, gender:'여', grade:'5등급', address:'인천 서구 청라커낼로 252 (청라동, 청라 롯데캐슬) 107동 402호', guardian:'이보라 (자녀)', phone:'010-6419-7195', conditions:['알츠하이머 치매', '25.8월 요로감염', '폐렴'], careWorker:'미배정', initials:'양승' },
+  { id:'P037', name:'오분탁', age:88, gender:'여', grade:'2등급', address:'인천 중구 운북동 361-4 카페R 1층', guardian:'이정연(막내따님) (자녀)', phone:'010-5572-2243', conditions:['뇌경색', '심혈관질환(고혈압', '고지혈증)', '엑스레이결과(심장비대의심)'], careWorker:'미배정', initials:'오분' },
+  { id:'P038', name:'유경옥', age:80, gender:'여', grade:'4등급', address:'인천 서구 가정동 568 201동 1505호', guardian:'전희재 (자녀)', phone:'010-5371-8961', conditions:['고혈압', '혈소판감소증'], careWorker:'미배정', initials:'유경' },
+  { id:'P039', name:'유무산', age:85, gender:'여', grade:'5등급', address:'인천 서구 청라라임로 17 (청라동, 청라 힐데스하임) 128동 1206호', guardian:'이강순 (자부)', phone:'010-7135-2018', conditions:['치매(25.09.08)', '고혈압'], careWorker:'미배정', initials:'유무' },
+  { id:'P040', name:'유정순', age:91, gender:'여', grade:'5등급', address:'인천 서구 청라커낼로 232 (청라동, 청라엘에이치) 416동 1803호', guardian:'나영일 (자녀)', phone:'010-3723-1419', conditions:['양쪽관절 수술', '우울감있음.'], careWorker:'미배정', initials:'유정' },
+  { id:'P041', name:'이병모', age:72, gender:'여', grade:'3등급', address:'인천 서구 서곶로 45 (가정동, 루원 린스트라우스 더 린시티) 103동 1502호', guardian:'우은하 (자녀)', phone:'010-8916-5847', conditions:['고혈압', '당뇨', '파킨슨(7년전)'], careWorker:'미배정', initials:'이병' },
+  { id:'P042', name:'이영희', age:91, gender:'여', grade:'3등급', address:'인천 서구 청라에메랄드로 30 (청라동, 청라자이) 111동 1901호', guardian:'정민정 (자녀)', phone:'010-4334-1774', conditions:['파킨슨', '심근경색', '고혈압', '신장질환'], careWorker:'미배정', initials:'이영' },
+  { id:'P043', name:'이율자', age:76, gender:'여', grade:'3등급', address:'인천 서구 청라커낼로 252 (청라동, 청라 롯데캐슬) 102동 502호', guardian:'오혁수 (자녀)', phone:'010-4623-3738', conditions:['5년 전 고혈압', '신장염(만성심부전)', '낙상으로 어깨', '허리 골절'], careWorker:'미배정', initials:'이율' },
+  { id:'P044', name:'이일용', age:82, gender:'남', grade:'4등급', address:'인천 서구 청라루비로42번길 6-19 (청라동) 201호', guardian:'송주순 (배우자)', phone:'010-3383-2913', conditions:['파킨슨(23년)', '어지럼증(40년넘음)', '소뇌 수축', '고혈압(40년이상)', '당뇨(3년째)'], careWorker:'미배정', initials:'이일' },
+  { id:'P045', name:'이충대', age:64, gender:'남', grade:'3등급', address:'인천 서구 청라에메랄드로 30 (청라동, 청라자이) 115동 1202호', guardian:'이향유 (배우자)', phone:'010-8142-7230', conditions:['소뇌위축증', '기립성 저혈압', '파킨슨(23년 1월)', '허리통증'], careWorker:'미배정', initials:'이충' },
+  { id:'P046', name:'이화자', age:86, gender:'여', grade:'3등급', address:'인천 서구 청라루비로 68 (청라동, 인천청라 한일베라체) 461동 704호', guardian:'이향옥 (자녀)', phone:'010-8751-2448', conditions:['당뇨', '고혈압', '심장(스텐트)', '뇌경색', '척추골절(시멘트시술)', '틀니착용', '경도인지장애(단기기억'], careWorker:'미배정', initials:'이화' },
+  { id:'P047', name:'임명숙', age:71, gender:'여', grade:'인지지원등급', address:'인천 서구 크리스탈로74번길 26 (청라동, 청라더샵레이크파크) 451동 501호', guardian:'김수미 (자부)', phone:'010-9091-7794', conditions:['알츠하이머치매(3년전쯤)', '치매약 아침', '저녁 복용하심.'], careWorker:'미배정', initials:'임명' },
+  { id:'P048', name:'임순심', age:87, gender:'여', grade:'3등급', address:'인천 서해구 청라커낼로 163 (청라동, 청라29블럭호반베르디움) 495동803호', guardian:'최은숙 (자녀)', phone:'010-3748-4629', conditions:['치매(기억력저하_5년전에 판정)', '고혈압', '고지혈증'], careWorker:'미배정', initials:'임순' },
+  { id:'P049', name:'전완표', age:73, gender:'남', grade:'5등급', address:'인천 서구 새오개로 4 (석남동, 대명아파트) 101동 102호', guardian:'전완옥 (형제)', phone:'010-2764-7614', conditions:['26.1 치매 진단 받음. 당뇨(약은 안드심)', '단백뇨'], careWorker:'미배정', initials:'전완' },
+  { id:'P050', name:'정규선', age:80, gender:'여', grade:'2등급', address:'인천 서구 크리스탈로 148 (청라동, 청라 한화꿈에그린) 371동 1902호', guardian:'조한원 (자녀)', phone:'010-9005-1724', conditions:['알츠하이머 치매', '고혈압', '고지혈증', '수두증', '당뇨전단계', '척추협착증', '허혈성대장염.'], careWorker:'미배정', initials:'정규' },
+  { id:'P051', name:'정금자', age:76, gender:'여', grade:'3등급', address:'인천 서구 솔빛로 13 (청라동, 청라 동양엔파트) 541동 1401호', guardian:'구본진 (자녀)', phone:'010-5225-9939', conditions:['20년전 뇌출혈', '뇌수종(22년2월)', '고혈압', '관절염(양쪽무릎)', '변비'], careWorker:'미배정', initials:'정금' },
+  { id:'P052', name:'정동구', age:84, gender:'남', grade:'5등급', address:'인천 서구 솔빛로 93 (청라동, 청라 SK VIEW) 502동 102호', guardian:'정혜란 (자녀)', phone:'010-2587-7036', conditions:['치매(25년)', '심장인공판막시술(22년도)'], careWorker:'미배정', initials:'정동' },
+  { id:'P053', name:'정상연', age:87, gender:'여', grade:'5등급', address:'인천 서구 청라한울로 95 (청라동, 청라제일풍경채) 308동 803호', guardian:'김미경 (자녀)', phone:'010-4850-8548', conditions:['치매(25년8-9월 판정)', '고혈압', '오른쪽 청력', '오른쪽 시력 저하'], careWorker:'미배정', initials:'정상' },
+  { id:'P054', name:'조현훈', age:77, gender:'남', grade:'4등급', address:'인천 중구 하늘별빛로 86 (중산동, 인천 영종하늘도시 한라비발디아파트) 921동 2102호', guardian:'김순옥 (배우자)', phone:'010-4211-7973', conditions:['치매(경증)', '항암치료(혈액암)', '치매약', '혈액암약 복용중(아침', '저녁)'], careWorker:'미배정', initials:'조현' },
+  { id:'P055', name:'진순균', age:93, gender:'여', grade:'4등급', address:'인천 서구 청라동 115-1 청라제일풍경채1차 305동 701호', guardian:'이성엽 (자녀)', phone:'010-3695-8357', conditions:['3년전 치매진단', '고혈압', '당뇨', '90년대 위암진단(위절제술)', '외출시에만기저귀착'], careWorker:'미배정', initials:'진순' },
+  { id:'P056', name:'진점례', age:66, gender:'여', grade:'2등급', address:'인천 서구 비즈니스로 41 (청라동, 청라한양수자인) 553동 1201호', guardian:'신진섭 (자녀)', phone:'010-8887-7796', conditions:['치매(2025년)', '뇌경색(2014년도쯤', '오른쪽편마비)', '언어장애(전두엽제거)'], careWorker:'미배정', initials:'진점' },
+  { id:'P057', name:'차선오', age:75, gender:'남', grade:'4등급', address:'인천 서구 원적로47번길 6 (가좌동, 풍림아파트) 102동 306호', guardian:'김명순 (배우자)', phone:'010-8947-4635', conditions:['뇌출혈(9년전', '2016년쯤)', '간 염증', '열로 인해 수술하심(3년전', '2022년쯤)'], careWorker:'미배정', initials:'차선' },
+  { id:'P058', name:'최돈자', age:71, gender:'여', grade:'3등급', address:'인천 부평구 동수천로 117 (부개동, 부평코오롱하늘채) 104동 2004호', guardian:'박지현 (자녀)', phone:'010-8783-0975', conditions:['파킨슨', '기립성 저혈압. 척추수술경험있음.'], careWorker:'미배정', initials:'최돈' },
+  { id:'P059', name:'최문자', age:94, gender:'여', grade:'4등급', address:'인천 서구 크리스탈로 148 (청라동, 청라 한화꿈에그린) 380동 1404호', guardian:'김수연 (자녀)', phone:'010-7125-6070', conditions:['고혈압', '허리협착(수술)'], careWorker:'미배정', initials:'최문' },
+  { id:'P060', name:'최분묵', age:73, gender:'여', grade:'3등급', address:'인천 서구 염곡로 236 (석남동, 석남금호어울림) 501동 1501호', guardian:'문혁기 (자녀)', phone:'010-8228-4746', conditions:['노화성으로 인한 왼쪽 파킨슨'], careWorker:'미배정', initials:'최분' },
+  { id:'P061', name:'최재수', age:88, gender:'남', grade:'4등급', address:'인천 서구 천마로13번길 6 (가정동, 동우아파트) 102동112호', guardian:'최수연 (자녀)', phone:'010-6789-6389', conditions:['전립선암 수술', '당뇨', '고혈압'], careWorker:'미배정', initials:'최재' },
+  { id:'P062', name:'한계심', age:71, gender:'여', grade:'인지지원등급', address:'인천 계양구 안남로 583 (효성동, 대림아파트) 102동 601호', guardian:'이마음 (자녀)', phone:'010-3651-6144', conditions:['알츠하이머(24년 8월)'], careWorker:'미배정', initials:'한계' },
+  { id:'P063', name:'한정자', age:90, gender:'여', grade:'5등급', address:'인천 서구 솔빛로 93 (청라동, 청라 SK VIEW) 502동 2601호', guardian:'선용철 (자녀)', phone:'010-6302-1210', conditions:['치매', '고혈압', '심장질환'], careWorker:'미배정', initials:'한정' },
+  { id:'P064', name:'홍화선', age:84, gender:'여', grade:'4등급', address:'인천 서구 청라커낼로288번길 8-10 (청라동) 926호', guardian:'김현옥 (자부)', phone:'010-8178-1313', conditions:['고지혈증', '뇌하수체종양2/3제거(20년전)', '당 약간 높으나 당뇨 진단 받지 않음'], careWorker:'미배정', initials:'홍화' },
 ];
 
-const gradeClass = {'1등급':'grade1','2등급':'grade2','3등급':'grade3','4등급':'grade4','5등급':'grade5'};
+const gradeClass = {'1등급':'grade1','2등급':'grade2','3등급':'grade3','4등급':'grade4','5등급':'grade5','인지지원등급':'grade-cog'};
 const typeStyle = {'신체활동지원':'rt-care','인지활동지원':'rt-activity','간호처치':'rt-medical','영양·식사':'rt-nutrition','특이사항':'rt-care'};
 
 let selectedPatient = null; // 상단바/기록이력/수급자정보 탭에 표시되는 대표(최근 선택) 이용자
