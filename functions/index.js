@@ -13,7 +13,7 @@ const db = getFirestore();
 // App Check: 우리 앱(reCAPTCHA v3 검증 통과)에서 온 요청만 허용하기 위한 검증.
 // 배포 초기에는 monitor 모드(false)로 두어 토큰이 정상 흐르는지 로그로 확인한 뒤,
 // 확인되면 true 로 바꿔 재배포하면 무단 호출이 차단된다.
-const ENFORCE_APP_CHECK = false;
+const ENFORCE_APP_CHECK = true;
 
 // 유효한 App Check 토큰이면 true. enforce 모드에서 무효/누락이면 401 응답 후 false.
 // monitor 모드에서는 항상 통과시키되 검증 결과를 로그로 남긴다.
