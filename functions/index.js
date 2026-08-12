@@ -4,10 +4,38 @@ const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getAppCheck } = require("firebase-admin/app-check");
 const { RtcTokenBuilder, RtcRole } = require("agora-token");
 
 initializeApp();
 const db = getFirestore();
+
+// App Check: 우리 앱(reCAPTCHA v3 검증 통과)에서 온 요청만 허용하기 위한 검증.
+// 배포 초기에는 monitor 모드(false)로 두어 토큰이 정상 흐르는지 로그로 확인한 뒤,
+// 확인되면 true 로 바꿔 재배포하면 무단 호출이 차단된다.
+const ENFORCE_APP_CHECK = false;
+
+// 유효한 App Check 토큰이면 true. enforce 모드에서 무효/누락이면 401 응답 후 false.
+// monitor 모드에서는 항상 통과시키되 검증 결과를 로그로 남긴다.
+async function requireAppCheck(req, res) {
+  const token = req.header("X-Firebase-AppCheck");
+  let valid = false;
+  if (token) {
+    try {
+      await getAppCheck().verifyToken(token);
+      valid = true;
+    } catch (e) {
+      logger.warn("App Check 토큰 검증 실패", e && e.message);
+    }
+  } else {
+    logger.info("App Check 토큰 없음");
+  }
+  if (!valid && ENFORCE_APP_CHECK) {
+    res.status(401).json({ error: "앱 인증이 필요합니다" });
+    return false;
+  }
+  return true;
+}
 
 const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 const ADMIN_PIN = defineSecret("ADMIN_PIN");
@@ -73,6 +101,7 @@ exports.transcribe = onRequest(
     memory: "512MiB",
   },
   async (req, res) => {
+    if (!(await requireAppCheck(req, res))) return;
     if (req.method !== "POST") {
       res.status(405).json({ error: "POST만 지원합니다" });
       return;
@@ -116,6 +145,7 @@ exports.agoraConfig = onRequest(
     region: "asia-northeast3",
   },
   async (req, res) => {
+    if (!(await requireAppCheck(req, res))) return;
     res.status(200).json({ appId: AGORA_APP_ID.value() });
   }
 );
@@ -140,6 +170,7 @@ exports.agoraToken = onRequest(
     region: "asia-northeast3",
   },
   async (req, res) => {
+    if (!(await requireAppCheck(req, res))) return;
     if (req.method !== "POST") {
       res.status(405).json({ error: "POST만 지원합니다" });
       return;
@@ -194,6 +225,7 @@ exports.savePttClip = onRequest(
     memory: "512MiB",
   },
   async (req, res) => {
+    if (!(await requireAppCheck(req, res))) return;
     if (req.method !== "POST") {
       res.status(405).json({ error: "POST만 지원합니다" });
       return;
@@ -262,6 +294,7 @@ exports.listPttClips = onRequest(
     region: "asia-northeast3",
   },
   async (req, res) => {
+    if (!(await requireAppCheck(req, res))) return;
     if (req.method !== "POST") {
       res.status(405).json({ error: "POST만 지원합니다" });
       return;
@@ -299,6 +332,7 @@ exports.getPttClip = onRequest(
     region: "asia-northeast3",
   },
   async (req, res) => {
+    if (!(await requireAppCheck(req, res))) return;
     if (req.method !== "POST") {
       res.status(405).json({ error: "POST만 지원합니다" });
       return;
@@ -360,6 +394,7 @@ exports.listStaff = onRequest(
     region: "asia-northeast3",
   },
   async (req, res) => {
+    if (!(await requireAppCheck(req, res))) return;
     try {
       const staff = await fetchStaffList();
       res.status(200).json({ staff });
@@ -378,6 +413,7 @@ exports.manageStaff = onRequest(
     region: "asia-northeast3",
   },
   async (req, res) => {
+    if (!(await requireAppCheck(req, res))) return;
     if (req.method !== "POST") {
       res.status(405).json({ error: "POST만 지원합니다" });
       return;

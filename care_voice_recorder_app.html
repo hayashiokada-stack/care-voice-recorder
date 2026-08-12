@@ -507,6 +507,9 @@
 </div>
 
 <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.24.6.js" onerror="window.__agoraSdkLoadFailed=true"></script>
+<!-- Firebase App Check (reCAPTCHA v3): 무단 호출로부터 백엔드 함수를 보호 -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" onerror="window.__firebaseSdkLoadFailed=true"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-check-compat.js" onerror="window.__firebaseSdkLoadFailed=true"></script>
 
 <div class="id-overlay" id="idOverlay">
   <div class="id-card">
@@ -630,7 +633,49 @@ let staffList = [];
 let currentStaffName = localStorage.getItem('currentStaffName') || '';
 let adminPin = null; // 관리자 패널 잠금 해제 후에만 메모리에 보관 (저장하지 않음)
 
+// --- Firebase App Check (reCAPTCHA v3) — 무단 백엔드 호출 차단 ---
+// 아래 값들은 공개용 웹 설정이라 소스에 노출돼도 안전(비밀키는 서버 App Check에만 등록).
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyDgrlSZzTYFlMlOAHXseUI0IAvIpWEztgY',
+  authDomain: 'audio-communication-239bf.firebaseapp.com',
+  projectId: 'audio-communication-239bf',
+  appId: '1:422292093626:web:0e0e4c16b00cfe4cf02083',
+};
+const RECAPTCHA_V3_SITE_KEY = '6LeJyoEtAAAAAFcOkHKbxvUAt-gjOmCUMgmk8YJ0';
+
+function initAppCheck() {
+  try {
+    if (window.__firebaseSdkLoadFailed || typeof firebase === 'undefined' || !RECAPTCHA_V3_SITE_KEY) return;
+    firebase.initializeApp(FIREBASE_CONFIG);
+    firebase.appCheck().activate(
+      new firebase.appCheck.ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
+      true // 토큰 자동 갱신
+    );
+    window.__appCheck = true;
+  } catch (e) {
+    console.error('App Check 초기화 실패', e);
+  }
+}
+
+// 함수 호출용 fetch 래퍼 — App Check 토큰을 헤더로 자동 첨부한다.
+async function appCheckHeaders() {
+  try {
+    if (window.__appCheck && typeof firebase !== 'undefined' && firebase.appCheck) {
+      const r = await firebase.appCheck().getToken(false);
+      if (r && r.token) return { 'X-Firebase-AppCheck': r.token };
+    }
+  } catch (e) { /* 토큰 발급 실패 시 헤더 없이 진행(모니터 모드에선 통과) */ }
+  return {};
+}
+
+async function fnFetch(url, options = {}) {
+  const ac = await appCheckHeaders();
+  const headers = Object.assign({}, options.headers || {}, ac);
+  return fetch(url, Object.assign({}, options, { headers }));
+}
+
 function init() {
+  initAppCheck();
   renderPatients(patients);
   renderWaveBars();
   renderServers();
@@ -653,7 +698,7 @@ async function initStaffIdentity() {
 
 async function loadStaffList() {
   try {
-    const res = await fetch(STAFF_LIST_ENDPOINT);
+    const res = await fnFetch(STAFF_LIST_ENDPOINT);
     if (!res.ok) throw new Error('직원 목록 조회 실패');
     const data = await res.json();
     staffList = Array.isArray(data.staff) ? data.staff : [];
@@ -712,7 +757,7 @@ async function unlockStaffAdmin() {
   const pin = input.value.trim();
   if (!pin) return;
   try {
-    const res = await fetch(STAFF_MANAGE_ENDPOINT, {
+    const res = await fnFetch(STAFF_MANAGE_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin, action: 'list' }),
@@ -746,7 +791,7 @@ async function addStaffMember() {
   const name = input.value.trim();
   if (!name) return;
   try {
-    const res = await fetch(STAFF_MANAGE_ENDPOINT, {
+    const res = await fnFetch(STAFF_MANAGE_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin: adminPin, action: 'add', name }),
@@ -767,7 +812,7 @@ async function removeStaffMember(id) {
   if (!target) return;
   if (!confirm(`${target.name}님을 목록에서 삭제할까요?`)) return;
   try {
-    const res = await fetch(STAFF_MANAGE_ENDPOINT, {
+    const res = await fnFetch(STAFF_MANAGE_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin: adminPin, action: 'remove', id }),
@@ -974,7 +1019,7 @@ async function handleRecordingStopped() {
 
   try {
     const base64 = await blobToBase64(blob);
-    const res = await fetch(TRANSCRIBE_ENDPOINT, {
+    const res = await fnFetch(TRANSCRIBE_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ audioBase64: base64, mimeType }),
@@ -1403,7 +1448,7 @@ function initPtt() {
 
 async function fetchAgoraAppId() {
   if (agoraAppId) return agoraAppId;
-  const res = await fetch(AGORA_CONFIG_ENDPOINT);
+  const res = await fnFetch(AGORA_CONFIG_ENDPOINT);
   if (!res.ok) throw new Error('Agora 설정 조회 실패');
   const data = await res.json();
   if (!data.appId) throw new Error('App ID 없음');
@@ -1412,7 +1457,7 @@ async function fetchAgoraAppId() {
 }
 
 async function fetchAgoraToken(channelName, account) {
-  const res = await fetch(AGORA_TOKEN_ENDPOINT, {
+  const res = await fnFetch(AGORA_TOKEN_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ channelName, account }),
@@ -1696,7 +1741,7 @@ async function finalizePttClip(chunks, mime, speaker, startMs) {
   if (blob.size === 0) return;
   try {
     const base64 = await blobToBase64(blob);
-    const res = await fetch(PTT_CLIP_SAVE_ENDPOINT, {
+    const res = await fnFetch(PTT_CLIP_SAVE_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ audioBase64: base64, mimeType: mime, speaker, channelName: pttChannelName, durationMs }),
@@ -1752,7 +1797,7 @@ async function loadPttClips(pinArg) {
   const el = document.getElementById('pttClipList');
   if (el) el.innerHTML = '<div class="empty-state" style="padding:8px 0">불러오는 중...</div>';
   try {
-    const res = await fetch(PTT_CLIP_LIST_ENDPOINT, {
+    const res = await fnFetch(PTT_CLIP_LIST_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin }),
@@ -1796,7 +1841,7 @@ function renderPttClips(clips) {
 async function playPttClip(id, btn) {
   if (btn) btn.disabled = true;
   try {
-    const res = await fetch(PTT_CLIP_AUDIO_ENDPOINT, {
+    const res = await fnFetch(PTT_CLIP_AUDIO_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, pin: adminPin }),
