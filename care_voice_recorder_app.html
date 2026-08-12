@@ -511,6 +511,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" onerror="window.__firebaseSdkLoadFailed=true"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-check-compat.js" onerror="window.__firebaseSdkLoadFailed=true"></script>
 
+<div id="appAuthBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99999;background:#A32D2D;color:#fff;padding:10px 14px;font-size:13px;line-height:1.5;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.25)">
+  🔄 앱 인증이 만료되었습니다. 새로고침하면 다시 사용할 수 있습니다.
+  <button type="button" onclick="location.reload()" style="margin-left:8px;background:#fff;color:#A32D2D;border:none;border-radius:6px;padding:4px 12px;font-size:13px;font-weight:600;cursor:pointer">새로고침</button>
+</div>
 <div class="id-overlay" id="idOverlay">
   <div class="id-card">
     <div class="id-title">사용자를 선택하세요</div>
@@ -620,6 +624,7 @@ let lastSync = localStorage.getItem('lastSync') || null;
 
 // Firebase Cloud Function (asia-northeast3, 프로젝트: audio-communication-239bf) — 오디오를 받아 OpenAI Whisper로 전사
 const TRANSCRIBE_ENDPOINT = 'https://asia-northeast3-audio-communication-239bf.cloudfunctions.net/transcribe';
+const GENERATE_ENDPOINT = 'https://asia-northeast3-audio-communication-239bf.cloudfunctions.net/generateRecord';
 const STAFF_LIST_ENDPOINT = 'https://asia-northeast3-audio-communication-239bf.cloudfunctions.net/listStaff';
 const STAFF_MANAGE_ENDPOINT = 'https://asia-northeast3-audio-communication-239bf.cloudfunctions.net/manageStaff';
 const AGORA_CONFIG_ENDPOINT = 'https://asia-northeast3-audio-communication-239bf.cloudfunctions.net/agoraConfig';
@@ -658,20 +663,33 @@ function initAppCheck() {
 }
 
 // 함수 호출용 fetch 래퍼 — App Check 토큰을 헤더로 자동 첨부한다.
-async function appCheckHeaders() {
+async function appCheckHeaders(forceRefresh) {
   try {
     if (window.__appCheck && typeof firebase !== 'undefined' && firebase.appCheck) {
-      const r = await firebase.appCheck().getToken(false);
+      const r = await firebase.appCheck().getToken(!!forceRefresh);
       if (r && r.token) return { 'X-Firebase-AppCheck': r.token };
     }
-  } catch (e) { /* 토큰 발급 실패 시 헤더 없이 진행(모니터 모드에선 통과) */ }
+  } catch (e) { /* 토큰 발급 실패 시 헤더 없이 진행 */ }
   return {};
 }
 
+// 함수 호출 래퍼. App Check 토큰을 첨부하고, 401(앱 인증 차단)이면 토큰을 강제
+// 갱신해 1회 자동 재시도한다. 그래도 401이면 "새로고침" 배너를 띄워 사용자가 복구하게 한다.
 async function fnFetch(url, options = {}) {
-  const ac = await appCheckHeaders();
-  const headers = Object.assign({}, options.headers || {}, ac);
-  return fetch(url, Object.assign({}, options, { headers }));
+  const base = Object.assign({}, options);
+  const send = (h) => fetch(url, Object.assign({}, base, { headers: Object.assign({}, base.headers || {}, h) }));
+  let res = await send(await appCheckHeaders(false));
+  if (res.status === 401 && window.__appCheck) {
+    const fresh = await appCheckHeaders(true); // 만료/불일치 토큰이면 강제 갱신 후 재시도
+    if (fresh['X-Firebase-AppCheck']) res = await send(fresh);
+    if (res.status === 401) showAppAuthBanner();
+  }
+  return res;
+}
+
+function showAppAuthBanner() {
+  const b = document.getElementById('appAuthBanner');
+  if (b) b.style.display = 'block';
 }
 
 function init() {
@@ -1121,13 +1139,69 @@ function generateOutputs(type, text, patient) {
 
 let currentOutputs = null;
 let kakaoPreviewShown = false;
+let generationSeq = 0;
 
-function runGeneration(text) {
+// 서버(실제 LLM)를 호출해 care-record-fix 원칙 기반으로 기록을 생성한다.
+async function requestOutputs(type, text, patient) {
+  const res = await fnFetch(GENERATE_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type, text,
+      patient: { name: patient.name, age: patient.age, grade: patient.grade, conditions: patient.conditions || [] },
+      staffName: currentStaffName || '',
+    }),
+  });
+  if (!res.ok) throw new Error('생성 서버 오류');
+  const data = await res.json();
+  if (!data || typeof data.feeReport !== 'string') throw new Error('생성 응답 형식 오류');
+  return {
+    type,
+    feeReport: data.feeReport,
+    handover: data.handover || '',
+    guardianMsg: data.guardianMsg || '',
+    incidentReport: (data.incidentReport && data.incidentReport.trim()) ? data.incidentReport : undefined,
+    isIncident: !!data.isIncident,
+    requiresManualReview: !!data.requiresManualReview,
+    source: 'ai',
+  };
+}
+
+// 서버 호출 실패(네트워크·API 오류) 시 기존 규칙 기반 시뮬레이션으로 폴백한다.
+async function getOutputs(type, text, patient) {
+  try {
+    return await requestOutputs(type, text, patient);
+  } catch (err) {
+    const fallback = generateOutputs(type, text, patient);
+    fallback.source = 'offline';
+    return fallback;
+  }
+}
+
+function renderGenerating() {
+  const section = document.getElementById('resultSection');
+  const el = document.getElementById('outputCards');
+  section.style.display = 'block';
+  el.innerHTML = '<div class="output-card"><div class="output-card-body" style="display:flex;align-items:center;gap:8px;color:var(--color-text-secondary)"><i class="ti ti-loader" style="animation:spin 1s linear infinite" aria-hidden="true"></i> AI가 기록을 정리하는 중입니다…</div></div>';
+}
+
+async function runGeneration(text) {
   if (!selectedPatient) { showToast('⚠️ 수급자를 먼저 선택해 주세요'); return; }
   kakaoPreviewShown = false;
-  currentOutputs = generateOutputs(selectedType, text, selectedPatient);
+  const seq = ++generationSeq;
+  currentOutputs = null;
+  renderGenerating();
+  const outputs = await getOutputs(selectedType, text, selectedPatient);
+  if (seq !== generationSeq) return; // 더 최신 생성이 시작됐으면 이 결과는 버린다
+  outputs._text = text;
+  outputs._type = selectedType;
+  outputs._patientId = selectedPatient.id;
+  currentOutputs = outputs;
   renderOutputs();
-  if (currentOutputs.isIncident) {
+  if (outputs.source === 'offline') {
+    showToast('⚠️ AI 생성 서버에 연결하지 못해 임시(오프라인) 방식으로 정리했습니다');
+  }
+  if (outputs.isIncident) {
     setTimeout(()=>showToast('🚨 담당자(관리자/센터장)에게 사고 알림이 전송되었습니다'), 400);
   }
 }
@@ -1209,36 +1283,52 @@ function clearRecord() {
   renderOutputs();
 }
 
-function saveRecord() {
+let isSaving = false;
+async function saveRecord() {
   const text = document.getElementById('transcriptionArea').value.trim();
   if(!text){ showToast('⚠️ 기록 내용을 입력해 주세요'); return; }
   if(selectedPatientIds.size===0){ showToast('⚠️ 이용자를 선택해 주세요'); return; }
+  if(isSaving) return;
+  isSaving = true;
 
   const targets = patients.filter(p => selectedPatientIds.has(p.id));
   const now = new Date();
   const createdIds = [];
+  let usedFallback = false;
 
-  targets.forEach(p => {
-    const outputs = generateOutputs(selectedType, text, p);
-    const record = {
-      id: 'R'+Date.now()+'-'+p.id,
-      patientId: p.id,
-      patientName: p.name,
-      type: selectedType,
-      text,
-      time: now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),
-      date: now.toLocaleDateString('ko-KR'),
-      duration: seconds,
-      syncStatus: 'pending',
-      careWorker: p.careWorker,
-      recordedBy: currentStaffName || '미상',
-      outputs,
-      isIncident: !!(outputs && outputs.isIncident),
-      requiresManualReview: !!(outputs && outputs.requiresManualReview),
-    };
-    records.unshift(record);
-    createdIds.push(record.id);
-  });
+  try {
+    for (const p of targets) {
+      // 방금 화면에서 생성한 결과가 이 수급자·같은 원문·같은 유형이면 재사용(중복 호출 방지),
+      // 아니면(일괄저장 등) 수급자별로 서버 생성한다.
+      let outputs;
+      if (currentOutputs && currentOutputs._text === text && currentOutputs._type === selectedType && currentOutputs._patientId === p.id) {
+        outputs = currentOutputs;
+      } else {
+        outputs = await getOutputs(selectedType, text, p);
+      }
+      if (outputs && outputs.source === 'offline') usedFallback = true;
+      const record = {
+        id: 'R'+Date.now()+'-'+p.id,
+        patientId: p.id,
+        patientName: p.name,
+        type: selectedType,
+        text,
+        time: now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),
+        date: now.toLocaleDateString('ko-KR'),
+        duration: seconds,
+        syncStatus: 'pending',
+        careWorker: p.careWorker,
+        recordedBy: currentStaffName || '미상',
+        outputs,
+        isIncident: !!(outputs && outputs.isIncident),
+        requiresManualReview: !!(outputs && outputs.requiresManualReview),
+      };
+      records.unshift(record);
+      createdIds.push(record.id);
+    }
+  } finally {
+    isSaving = false;
+  }
 
   try { localStorage.setItem('careRecords', JSON.stringify(records.slice(0,200))); } catch(e){}
   pendingRecords += targets.length;
@@ -1246,6 +1336,7 @@ function saveRecord() {
   renderHistory();
   clearRecord();
   showToast(targets.length > 1 ? `✅ ${targets.length}명에게 기록이 일괄 저장되었습니다` : '✅ 기록이 저장되었습니다');
+  if (usedFallback) setTimeout(()=>showToast('⚠️ 일부는 AI 서버 연결 실패로 임시(오프라인) 방식으로 저장되었습니다'), 300);
 
   createdIds.forEach(id => setTimeout(()=>autoSync(id), 2000));
 }

@@ -136,6 +136,208 @@ exports.transcribe = onRequest(
   }
 );
 
+// --- AI 기록 생성 (care-record-fix 스킬 원칙 + 5유형별_AI프롬프트_설계.md 구조) ---
+// STT 원문을 급여기록지/인수인계/보호자 안내(사고 시 사고보고서 추가)로 정리한다.
+const RECORD_TYPES = ["신체활동지원", "인지활동지원", "간호처치", "영양·식사", "특이사항"];
+
+// 사고 판정은 결정적으로(키워드) 처리한다 — LLM 판단에만 맡기면 축소·누락 위험이 있어
+// care-record-fix 원칙("사고는 절대 축소·누락하지 않는다")을 서버에서 강제한다.
+const INCIDENT_KEYWORDS = ["낙상", "넘어짐", "미끄러짐", "부딪힘", "상처", "출혈", "골절", "화상", "사레", "질식", "오연", "실종", "배회", "의식소실", "응급실", "119"];
+function detectIncident(text) {
+  return INCIDENT_KEYWORDS.some((k) => text.includes(k));
+}
+function detectNursingAbnormal(text) {
+  const bp = text.match(/(\d{2,3})\s*\/\s*(\d{2,3})\s*mmHg/);
+  if (bp) {
+    const sys = parseInt(bp[1], 10);
+    const dia = parseInt(bp[2], 10);
+    if (sys >= 140 || sys <= 90 || dia >= 90) return true;
+  }
+  const temp = text.match(/([\d.]+)\s*도/);
+  if (temp && parseFloat(temp[1]) >= 37.5) return true;
+  return /이상반응|발열|호흡곤란|어지러움|구토/.test(text);
+}
+
+const RECORD_SYSTEM_PROMPT = `당신은 대한민국 장기요양기관에서 요양보호사·간호(조무)인력이 구술한 돌봄 기록을 정식 기록 문장으로 정리하는 어시스턴트입니다. 입력 원문은 현장에서 말한 것을 그대로 받아쓴 것입니다.
+
+[절대 규칙]
+1. 원문에 있는 사실만 사용한다. 원문에 없는 수치·횟수·증상·발언·조치를 새로 지어내지 않는다.
+2. 채워야 하는 항목의 근거가 원문에 없으면 그럴듯하게 메우지 말고 "[확인 필요: 무엇]" 형태로 남긴다.
+3. 의학적 단정을 쓰지 않는다("치매가 악화됨", "약을 줄여야 함" 등 금지). 관찰된 행동과 빈도 변화, 기관이 한 조치로 바꾼다.
+4. 활동 나열이 아니라 상태 중심으로 쓴다. "무엇을 했다"가 아니라 "그래서 어르신이 어떻게 되었는가"가 드러나야 한다.
+5. 사고·낙상·응급 정황은 절대 축소하거나 빼지 않는다.
+6. 수급자명은 주어진 이름을 그대로 사용한다(내부 기록 시스템이므로 비식별하지 않는다).
+7. 여러 문장이 똑같은 패턴으로 찍혀 나오지 않게 한다. 개별성이 기록의 핵심이다.
+
+[표현 교정]
+- "특이사항 없음" → 무엇이 유지되고 있는지 쓴다.
+- "컨디션 안 좋음/기력 저하" → 어떤 모습을 보고 그렇게 판단했는지 쓴다.
+- "잘 참여하심" → 참여 중 관찰된 기능·반응을 쓴다.
+- "식사 잘하심" → 섭취량·속도·자세·기침 유무를 쓴다.
+- "우울/불안해 보이심" → 말수·활동량·식사량의 변화로 쓴다.
+- "보호자 이해하심" → 기관이 무엇을 하기로 했는지로 끝낸다.
+- "필요시 지원함" → 실제 몇 번, 어떤 상황이었는지 쓴다(근거 없으면 [확인 필요]).
+
+[출력]
+반드시 아래 키를 가진 JSON 객체 하나만 출력한다. 마크다운·설명·코드펜스를 덧붙이지 않는다.
+{
+  "feeReport": "급여기록지용 문장(항목 구조화)",
+  "handover": "인수인계용 문장(3~4문장)",
+  "guardianMsg": "보호자 카카오톡 안내용 문장(2~3문장, 존댓말)",
+  "incidentReport": "사고보고서(사고일 때만 채우고, 아니면 빈 문자열)"
+}`;
+
+const TYPE_GUIDES = {
+  "신체활동지원": `[유형] 신체활동지원
+- feeReport 항목: 수행시간 / 지원내용(세면·구강관리·배설·이동·체위변경 등 구체 항목) / 수급자 반응 및 상태 / 특이사항. 추측성 표현 금지, 관찰 사실만.
+- handover: 다음 근무자가 이어서 확인할 것(주의 부위, 다음 케어 시점) 중심.
+- guardianMsg: 따뜻하고 안심되는 톤, 의료적 우려를 유발하는 표현 지양.`,
+  "인지활동지원": `[유형] 인지활동지원
+- feeReport 항목: 프로그램명/활동내용 / 참여도(적극적·소극적·거부 등) / 인지·정서 반응 / 특이사항. 인지저하는 평가용어가 아닌 관찰 사실로("치매가 심해짐" X → "이름을 반복해서 물어보심" O).
+- handover: 참여 거부·정서 변화·반복 질문 등 이어서 관찰할 포인트 중심.
+- guardianMsg: 인지저하를 암시하는 표현 금지. 긍정적·사실 기반. 우려 변화가 있으면 "센터에서 계속 지켜보고 있다"는 안심 문구 포함, 진단성 표현은 피함.`,
+  "간호처치": `[유형] 간호처치 (의료 관련 — 특히 사실 기반으로만)
+- feeReport 항목: 처치내용(투약/혈압측정/상처소독 등) / 수치(원문에 명시된 것만 그대로) / 이상반응 유무 / 다음 처치 예정. 원문에 없는 수치·진단은 절대 생성 금지([확인 필요] 사용).
+- handover: 투약 여부·다음 처치 시점·이상반응을 구체적 시간·수치로 명확히.
+- guardianMsg: 사실대로 전달하되 과도한 불안 조성은 지양.`,
+  "영양·식사": `[유형] 영양·식사
+- feeReport 항목: 식사형태(일반식/다진식/유동식 등) / 섭취량(전량/절반/소량 등) / 식사 중 특이사항(사레·거부·삼킴곤란 등) / 수분섭취. 삼킴곤란·사레 등 안전 사항은 빠짐없이 포함.
+- handover: 섭취량 저하·삼킴곤란 등 다음 식사 시 주의점 위주로 축약.
+- guardianMsg: 섭취량은 사실대로 전달하되 안심 문구 동반. 안전 이슈가 있으면 명시하되 과도한 불안 조성 지양.`,
+  "특이사항": `[유형] 특이사항
+- feeReport 항목: 발생시간 / 상황내용 / 조치사항 / 경과관찰 필요 여부.
+- handover: 다음 근무자가 이어서 관찰할 부분 중심으로 축약.
+- guardianMsg: 경미한 특이사항은 사실 위주로 간단히 안내, 안심 문구 포함.`,
+};
+
+const INCIDENT_GUIDE = `[사고로 분류됨] 위 3종에 더해 incidentReport를 반드시 작성한다. 아래 항목을 모두 포함하고, 원문에 없는 정보는 "[확인 필요]"로 명시한다(임의로 지어내지 않는다).
+- 발생일시 / 발생장소 / 사고유형(낙상·이물질·화상 등) / 사고 발생 경위(객관적 서술) / 초기 대응 조치 / 통보 여부 및 대상(가족·기관장·관할 보험사·지자체) / 재발방지대책(초안, "담당자 검토 필요" 문구 포함).
+- 사고 건은 보호자 자동전송 대상이 아니므로 guardianMsg는 간결한 사실 위주로 쓴다(과도한 표현 금지).`;
+
+function buildRecordUserPrompt({ type, text, patient, staffName, isIncident, nowLabel }) {
+  const p = patient || {};
+  const conditions = Array.isArray(p.conditions) && p.conditions.length ? p.conditions.join(", ") : "정보 없음";
+  const lines = [
+    "아래 원문을 정식 기록으로 정리하세요.",
+    "",
+    `[수급자] ${p.name || "확인 필요"} / ${p.age != null ? p.age + "세" : "나이 미상"} / ${p.grade || "등급 미상"}`,
+    `[주요 상병] ${conditions}`,
+    `[기록일시] ${nowLabel}`,
+    `[작성자] ${staffName || "미상"}`,
+    "",
+    TYPE_GUIDES[type],
+  ];
+  if (isIncident) lines.push("", INCIDENT_GUIDE);
+  lines.push("", "[녹음 원문]", text);
+  return lines.join("\n");
+}
+
+async function generateRecordOutputs({ type, text, patient, staffName }) {
+  const isIncident = type === "특이사항" && detectIncident(text);
+  const requiresManualReview = type === "간호처치" && detectNursingAbnormal(text);
+  const nowLabel = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+
+  const userPrompt = buildRecordUserPrompt({ type, text, patient, staffName, isIncident, nowLabel });
+
+  const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY.value()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0.4,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: RECORD_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!openaiRes.ok) {
+    const errText = await openaiRes.text();
+    logger.error("OpenAI 기록생성 오류", errText);
+    throw new Error("OpenAI 기록 생성 호출 실패");
+  }
+
+  const data = await openaiRes.json();
+  const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (e) {
+    logger.error("기록생성 JSON 파싱 실패", content);
+    throw new Error("기록 생성 응답 파싱 실패");
+  }
+
+  const result = {
+    type,
+    feeReport: typeof parsed.feeReport === "string" ? parsed.feeReport.trim() : "",
+    handover: typeof parsed.handover === "string" ? parsed.handover.trim() : "",
+    guardianMsg: typeof parsed.guardianMsg === "string" ? parsed.guardianMsg.trim() : "",
+    isIncident,
+    requiresManualReview,
+  };
+
+  // 안전 문구는 서버에서 결정적으로 강제한다(자동전송 차단은 프론트에서도 이중 처리).
+  if (isIncident) {
+    result.incidentReport = typeof parsed.incidentReport === "string" && parsed.incidentReport.trim()
+      ? parsed.incidentReport.trim()
+      : "[확인 필요] 사고보고서 항목(발생일시/발생장소/사고유형/경위/초기대응/통보대상/재발방지대책)을 담당자가 작성해야 합니다.";
+    result.guardianMsg = "담당자가 직접 유선 연락 예정입니다.";
+  } else if (requiresManualReview) {
+    result.guardianMsg = "간호팀 확인 후 개별 연락이 필요합니다 (카카오톡 자동 전송 보류).";
+  }
+
+  return result;
+}
+
+exports.generateRecord = onRequest(
+  {
+    secrets: [OPENAI_API_KEY],
+    cors: ALLOWED_ORIGINS,
+    region: "asia-northeast3",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+  },
+  async (req, res) => {
+    if (!(await requireAppCheck(req, res))) return;
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "POST만 지원합니다" });
+      return;
+    }
+
+    const { type, text, patient, staffName } = req.body || {};
+    if (!RECORD_TYPES.includes(type)) {
+      res.status(400).json({ error: "지원하지 않는 기록 유형입니다" });
+      return;
+    }
+    if (!text || typeof text !== "string" || !text.trim()) {
+      res.status(400).json({ error: "기록 원문이 필요합니다" });
+      return;
+    }
+    if (text.length > 5000) {
+      res.status(400).json({ error: "기록 원문이 너무 깁니다" });
+      return;
+    }
+
+    try {
+      const outputs = await generateRecordOutputs({
+        type,
+        text: text.trim(),
+        patient: patient && typeof patient === "object" ? patient : {},
+        staffName: typeof staffName === "string" ? staffName : "",
+      });
+      res.status(200).json(outputs);
+    } catch (err) {
+      logger.error("generateRecord 처리 중 오류", err);
+      res.status(502).json({ error: "기록 생성 서비스 호출에 실패했습니다" });
+    }
+  }
+);
+
 // Agora App ID 조회 (App ID는 비밀값이 아니라 클라이언트 SDK 초기화에 반드시 필요한 공개 식별자.
 // 다만 소스에 하드코딩하지 않고 App Certificate와 동일하게 Secret Manager로 일원 관리한다)
 exports.agoraConfig = onRequest(
