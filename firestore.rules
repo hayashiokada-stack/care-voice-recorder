@@ -1,0 +1,11 @@
+rules_version = '2';
+// 이 앱의 클라이언트는 Firestore에 직접 접근하지 않고 오직 Cloud Functions(Admin SDK)를
+// 경유한다. Admin SDK는 보안 규칙을 우회하므로, 클라이언트 직접 접근은 전부 차단한다.
+// (staff/pttClips/pttClipAudio 등 민감 데이터가 REST로 직접 노출되는 것을 막는다.)
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

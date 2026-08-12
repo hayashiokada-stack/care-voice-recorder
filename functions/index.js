@@ -238,10 +238,13 @@ exports.savePttClip = onRequest(
         createdAt: FieldValue.serverTimestamp(),
         expireAt,
       };
-      const ref = await db.collection("pttClips").add(meta);
+      // 오디오를 먼저 저장한 뒤 메타데이터를 기록한다. 오디오 저장이 실패하면
+      // 메타데이터를 만들지 않아 "재생 불가한 목록 항목(orphan)"이 남지 않는다.
+      const ref = db.collection("pttClips").doc();
       if (storeAudio) {
         await db.collection("pttClipAudio").doc(ref.id).set({ audioBase64, expireAt });
       }
+      await ref.set(meta);
       res.status(200).json({ id: ref.id, text, hasAudio: storeAudio });
     } catch (err) {
       logger.error("savePttClip 처리 중 오류", err);
@@ -251,12 +254,22 @@ exports.savePttClip = onRequest(
 );
 
 // 무전 녹음 목록 (최근 100건, 오디오 원본 제외한 메타데이터만)
+// 녹음은 민감정보(요양 대화)라 열람은 관리자 PIN 인증을 요구한다.
 exports.listPttClips = onRequest(
   {
+    secrets: [ADMIN_PIN],
     cors: ALLOWED_ORIGINS,
     region: "asia-northeast3",
   },
   async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "POST만 지원합니다" });
+      return;
+    }
+    if (!req.body || req.body.pin !== ADMIN_PIN.value()) {
+      res.status(403).json({ error: "관리자 PIN이 필요합니다" });
+      return;
+    }
     try {
       const snap = await db.collection("pttClips").orderBy("createdAt", "desc").limit(100).get();
       const clips = snap.docs.map((d) => {
@@ -278,15 +291,20 @@ exports.listPttClips = onRequest(
   }
 );
 
-// 무전 녹음 1건의 오디오 원본 조회 (재생용)
+// 무전 녹음 1건의 오디오 원본 조회 (재생용) — 열람은 관리자 PIN 인증 필요
 exports.getPttClip = onRequest(
   {
+    secrets: [ADMIN_PIN],
     cors: ALLOWED_ORIGINS,
     region: "asia-northeast3",
   },
   async (req, res) => {
     if (req.method !== "POST") {
       res.status(405).json({ error: "POST만 지원합니다" });
+      return;
+    }
+    if (!req.body || req.body.pin !== ADMIN_PIN.value()) {
+      res.status(403).json({ error: "관리자 PIN이 필요합니다" });
       return;
     }
     const { id } = req.body || {};

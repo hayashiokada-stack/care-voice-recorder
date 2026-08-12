@@ -383,6 +383,10 @@
         <div class="record-section">
           <div class="section-label">실시간 무전 (PTT)</div>
           <div class="ptt-card">
+            <div id="pttConsentBanner" style="display:none;background:var(--warn-light);border:0.5px solid var(--warn);color:#7A5410;border-radius:var(--border-radius-md);padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.6">
+              <b>녹음 안내</b> — 이 무전에서 말한 내용은 자동으로 <b>녹음·전사되어 30일간 보관</b>된 뒤 삭제됩니다. 업무 품질관리·인계 목적이며, 녹음 열람은 관리자만 가능합니다.
+              <div style="margin-top:8px;text-align:right"><button type="button" class="btn btn-secondary" onclick="ackPttConsent()">확인했습니다</button></div>
+            </div>
             <div class="ptt-status-row">
               <div class="ptt-status-badge">
                 <div class="ptt-status-dot disconnected" id="pttStatusDot"></div>
@@ -417,10 +421,14 @@
         <div class="record-section" style="margin-top:12px">
           <div class="section-label" style="display:flex;align-items:center;justify-content:space-between">
             <span>무전 녹음 기록</span>
-            <button type="button" class="link-btn" onclick="loadPttClips()">새로고침</button>
+            <button type="button" class="link-btn" id="pttClipRefreshBtn" onclick="loadPttClips()" style="display:none">새로고침</button>
           </div>
-          <div class="ptt-hint" style="text-align:left;margin-bottom:10px">무전 내용은 자동으로 녹음·전사되어 30일간 보관된 뒤 삭제됩니다.</div>
-          <div id="pttClipList"><div class="empty-state" style="padding:8px 0">아직 녹음이 없습니다</div></div>
+          <div class="ptt-hint" style="text-align:left;margin-bottom:10px">무전 내용은 자동으로 녹음·전사되어 30일간 보관된 뒤 삭제됩니다. 녹음 <b>열람은 관리자 PIN</b>이 필요합니다.</div>
+          <div id="pttClipLock" style="display:flex;gap:8px;align-items:center">
+            <input type="password" id="pttClipPinInput" class="mini-input" placeholder="관리자 PIN 입력" onkeydown="if(event.key==='Enter')unlockPttClips()">
+            <button type="button" class="btn btn-secondary" onclick="unlockPttClips()">열람</button>
+          </div>
+          <div id="pttClipList" style="display:none"></div>
         </div>
       </div>
 
@@ -778,9 +786,9 @@ function renderPatients(list) {
   const el = document.getElementById('patientList');
   el.innerHTML = list.map(p => `
     <div class="patient-item ${selectedPatient && selectedPatient.id===p.id ? 'active' : ''}" onclick="togglePatientSelection('${p.id}')" id="pi-${p.id}">
-      <input type="checkbox" class="patient-checkbox" ${selectedPatientIds.has(p.id)?'checked':''} onclick="event.stopPropagation(); togglePatientSelection('${p.id}')" aria-label="${p.name} 선택">
+      <input type="checkbox" class="patient-checkbox" ${selectedPatientIds.has(p.id)?'checked':''} onclick="event.stopPropagation(); togglePatientSelection('${p.id}')" aria-label="${escapeHtml(p.name)} 선택">
       <div class="patient-item-info">
-        <div class="patient-name">${p.name}</div>
+        <div class="patient-name">${escapeHtml(p.name)}</div>
         <div class="patient-info">${p.age}세 · ${p.gender} · ${p.id}</div>
         <span class="care-badge ${gradeClass[p.grade]}">${p.grade}</span>
       </div>
@@ -1022,7 +1030,7 @@ function detectNursingAbnormal(text) {
 
 function nowTimeLabel() { return new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}); }
 function nowFullLabel() { return new Date().toLocaleString('ko-KR'); }
-function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escapeHtml(s) { return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function generateOutputs(type, text, patient) {
   const result = { type, isIncident:false, requiresManualReview:false };
@@ -1243,20 +1251,20 @@ function renderPatientDetail() {
   document.getElementById('patientDetailContent').innerHTML = `
     <div class="patient-card">
       <div class="patient-card-header">
-        <div class="avatar">${p.initials}</div>
+        <div class="avatar">${escapeHtml(p.initials)}</div>
         <div>
-          <div style="font-size:16px;font-weight:500;color:var(--color-text-primary)">${p.name}</div>
+          <div style="font-size:16px;font-weight:500;color:var(--color-text-primary)">${escapeHtml(p.name)}</div>
           <div style="font-size:12px;color:var(--color-text-secondary)">${p.id}</div>
           <span class="care-badge ${gradeClass[p.grade]}" style="margin-top:4px;display:inline-block">${p.grade}</span>
         </div>
       </div>
       <div class="patient-meta">
         <div class="meta-item"><span class="meta-label">나이</span><span class="meta-value">${p.age}세 (${p.gender})</span></div>
-        <div class="meta-item"><span class="meta-label">담당자</span><span class="meta-value">${p.careWorker}</span></div>
-        <div class="meta-item"><span class="meta-label">연락처</span><span class="meta-value">${p.phone}</span></div>
-        <div class="meta-item"><span class="meta-label">보호자</span><span class="meta-value">${p.guardian}</span></div>
-        <div class="meta-item" style="grid-column:1/-1"><span class="meta-label">주소</span><span class="meta-value">${p.address}</span></div>
-        <div class="meta-item" style="grid-column:1/-1"><span class="meta-label">주요질환</span><span class="meta-value">${p.conditions.join(', ')}</span></div>
+        <div class="meta-item"><span class="meta-label">담당자</span><span class="meta-value">${escapeHtml(p.careWorker)}</span></div>
+        <div class="meta-item"><span class="meta-label">연락처</span><span class="meta-value">${escapeHtml(p.phone)}</span></div>
+        <div class="meta-item"><span class="meta-label">보호자</span><span class="meta-value">${escapeHtml(p.guardian)}</span></div>
+        <div class="meta-item" style="grid-column:1/-1"><span class="meta-label">주소</span><span class="meta-value">${escapeHtml(p.address)}</span></div>
+        <div class="meta-item" style="grid-column:1/-1"><span class="meta-label">주요질환</span><span class="meta-value">${escapeHtml(p.conditions.join(', '))}</span></div>
       </div>
     </div>
     <div class="section-label">최근 기록 요약</div>
@@ -1345,7 +1353,7 @@ function switchTab(name, el) {
   if(name==='history') renderHistory();
   if(name==='patient') renderPatientDetail();
   if(name==='settings') renderServers();
-  if(name==='ptt') { updatePttButtonEnabled(); loadPttClips(); }
+  if(name==='ptt') { updatePttButtonEnabled(); maybeShowPttConsent(); refreshPttClipSection(); }
 }
 
 function showToast(msg) {
@@ -1385,11 +1393,8 @@ let pttReconnectDelay = 3000;
 const activeSpeakers = new Map(); // 발화 중인 이름 -> true (로컬은 즉시, 원격은 이벤트로 갱신)
 
 // 무전 녹음: PTT 버튼을 누른 동안 로컬 음성을 MediaRecorder로 녹음해 손 떼면 서버에 저장한다.
+// 발화별 상태(청크·시작시각·발화자)는 startPttClipRecording의 클로저에 담는다.
 let pttClipRecorder = null;
-let pttClipChunks = [];
-let pttClipMime = '';
-let pttClipStartMs = 0;
-let pttClipSpeaker = '';
 
 function initPtt() {
   if (!canUseAgora) { renderPttFallback(); return; }
@@ -1653,7 +1658,6 @@ async function pttPressEnd() {
 
 function startPttClipRecording() {
   pttClipRecorder = null;
-  pttClipChunks = [];
   if (!window.MediaRecorder || !agoraLocalAudioTrack || typeof agoraLocalAudioTrack.getMediaStreamTrack !== 'function') return;
   try {
     const mst = agoraLocalAudioTrack.getMediaStreamTrack();
@@ -1662,13 +1666,16 @@ function startPttClipRecording() {
     const mime = MediaRecorder.isTypeSupported('audio/webm')
       ? 'audio/webm'
       : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
-    pttClipMime = mime || 'audio/webm';
-    pttClipSpeaker = currentStaffName;
-    pttClipStartMs = Date.now();
-    pttClipRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-    pttClipRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) pttClipChunks.push(e.data); };
-    pttClipRecorder.onstop = finalizePttClip;
-    pttClipRecorder.start(500); // 0.5초 간격으로 조각을 모아 마지막 구간 유실을 줄인다
+    // 발화별 상태는 전역이 아니라 이 클로저에 담는다 — 빠른 연속 발화 시에도 섞이지 않는다.
+    const chunks = [];
+    const usedMime = mime || 'audio/webm';
+    const speaker = currentStaffName;
+    const startMs = Date.now();
+    const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+    rec.onstop = () => finalizePttClip(chunks, usedMime, speaker, startMs);
+    pttClipRecorder = rec;
+    rec.start(500); // 0.5초 간격으로 조각을 모아 마지막 구간 유실을 줄인다
   } catch (err) {
     console.error('무전 녹음 시작 실패', err);
     pttClipRecorder = null;
@@ -1679,17 +1686,13 @@ function stopPttClipRecording() {
   if (pttClipRecorder && pttClipRecorder.state !== 'inactive') {
     try { pttClipRecorder.stop(); } catch (e) { /* onstop이 안 불릴 수 있으니 무시 */ }
   }
+  pttClipRecorder = null;
 }
 
-async function finalizePttClip() {
-  const chunks = pttClipChunks;
-  pttClipChunks = [];
-  const mime = pttClipMime || 'audio/webm';
-  const durationMs = pttClipStartMs ? (Date.now() - pttClipStartMs) : 0;
-  const speaker = pttClipSpeaker || currentStaffName || '';
-  pttClipRecorder = null;
+async function finalizePttClip(chunks, mime, speaker, startMs) {
+  const durationMs = startMs ? (Date.now() - startMs) : 0;
   if (!chunks.length || durationMs < 500) return; // 0.5초 미만 오발신은 저장하지 않음
-  const blob = new Blob(chunks, { type: mime });
+  const blob = new Blob(chunks, { type: mime || 'audio/webm' });
   if (blob.size === 0) return;
   try {
     const base64 = await blobToBase64(blob);
@@ -1699,8 +1702,8 @@ async function finalizePttClip() {
       body: JSON.stringify({ audioBase64: base64, mimeType: mime, speaker, channelName: pttChannelName, durationMs }),
     });
     if (!res.ok) throw new Error('저장 실패');
-    // 무전 탭을 보고 있으면 목록을 즉시 갱신
-    if (document.getElementById('tab-ptt') && document.getElementById('tab-ptt').style.display !== 'none') {
+    // 무전 탭을 관리자 PIN으로 열람 중이면 목록을 즉시 갱신
+    if (adminPin && document.getElementById('tab-ptt') && document.getElementById('tab-ptt').style.display !== 'none') {
       loadPttClips();
     }
   } catch (err) {
@@ -1708,19 +1711,60 @@ async function finalizePttClip() {
   }
 }
 
-// --- 무전 녹음 목록/재생 ---
+// --- 무전 녹음 목록/재생 (녹음은 민감정보라 열람은 관리자 PIN 필요) ---
 
-async function loadPttClips() {
+// PTT 탭 진입 시: PIN 잠금 해제 상태면 목록을, 아니면 PIN 입력창을 보여준다.
+function refreshPttClipSection() {
+  const lock = document.getElementById('pttClipLock');
+  const list = document.getElementById('pttClipList');
+  const refresh = document.getElementById('pttClipRefreshBtn');
+  if (adminPin) {
+    if (lock) lock.style.display = 'none';
+    if (list) list.style.display = 'block';
+    if (refresh) refresh.style.display = 'inline';
+    loadPttClips();
+  } else {
+    if (lock) lock.style.display = 'flex';
+    if (list) list.style.display = 'none';
+    if (refresh) refresh.style.display = 'none';
+  }
+}
+
+async function unlockPttClips() {
+  const input = document.getElementById('pttClipPinInput');
+  const pin = input ? input.value.trim() : '';
+  if (!pin) return;
+  const ok = await loadPttClips(pin); // PIN 검증 겸 목록 로드
+  if (!ok) { showToast('⚠️ 관리자 PIN이 올바르지 않습니다'); return; }
+  adminPin = pin;
+  if (input) input.value = '';
+  const lock = document.getElementById('pttClipLock');
+  const list = document.getElementById('pttClipList');
+  const refresh = document.getElementById('pttClipRefreshBtn');
+  if (lock) lock.style.display = 'none';
+  if (list) list.style.display = 'block';
+  if (refresh) refresh.style.display = 'inline';
+}
+
+async function loadPttClips(pinArg) {
+  const pin = pinArg || adminPin;
+  if (!pin) return false; // 잠금 상태
   const el = document.getElementById('pttClipList');
-  if (!el) return;
-  el.innerHTML = '<div class="empty-state" style="padding:8px 0">불러오는 중...</div>';
+  if (el) el.innerHTML = '<div class="empty-state" style="padding:8px 0">불러오는 중...</div>';
   try {
-    const res = await fetch(PTT_CLIP_LIST_ENDPOINT);
+    const res = await fetch(PTT_CLIP_LIST_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    if (res.status === 403) { if (el) el.innerHTML = ''; return false; }
     if (!res.ok) throw new Error('목록 조회 실패');
     const data = await res.json();
     renderPttClips(Array.isArray(data.clips) ? data.clips : []);
+    return true;
   } catch (e) {
-    el.innerHTML = '<div class="empty-state" style="padding:8px 0">녹음 목록을 불러오지 못했습니다</div>';
+    if (el) el.innerHTML = '<div class="empty-state" style="padding:8px 0">녹음 목록을 불러오지 못했습니다</div>';
+    return false;
   }
 }
 
@@ -1755,7 +1799,7 @@ async function playPttClip(id, btn) {
     const res = await fetch(PTT_CLIP_AUDIO_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id, pin: adminPin }),
     });
     if (!res.ok) throw new Error('오디오 조회 실패');
     const data = await res.json();
@@ -1776,6 +1820,19 @@ function formatPttClipTime(iso) {
   if (isNaN(d.getTime())) return '';
   const p = n => String(n).padStart(2, '0');
   return `${d.getMonth() + 1}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// --- 무전 녹음 고지·동의 (첫 사용 시 1회, 확인 기록을 이 기기에 저장) ---
+function maybeShowPttConsent() {
+  const banner = document.getElementById('pttConsentBanner');
+  if (!banner) return;
+  banner.style.display = localStorage.getItem('pttConsentAck') ? 'none' : 'block';
+}
+
+function ackPttConsent() {
+  try { localStorage.setItem('pttConsentAck', new Date().toISOString()); } catch (e) { /* 저장 실패 무시 */ }
+  const banner = document.getElementById('pttConsentBanner');
+  if (banner) banner.style.display = 'none';
 }
 
 function handleMicPermissionError(err) {
